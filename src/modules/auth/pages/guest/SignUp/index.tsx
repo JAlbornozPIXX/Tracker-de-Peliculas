@@ -1,13 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,29 +16,36 @@ import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { validateEmail, validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
 
-export default function SignIn() {
+function validateConfirmPassword(password: string, confirmPassword: string): string | undefined {
+  if (!confirmPassword) return 'Confirma tu contraseña';
+  if (confirmPassword !== password) return 'Las contraseñas no coinciden';
+  return undefined;
+}
+
+export default function SignUp() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
 
   function handleSubmit() {
     const emailError = validateEmail(email);
     const passwordError = validatePassword(password);
-    setErrors({ email: emailError, password: passwordError });
+    const confirmPasswordError = validateConfirmPassword(password, confirmPassword);
+    setErrors({ email: emailError, password: passwordError, confirmPassword: confirmPasswordError });
 
-    if (emailError || passwordError) return;
+    if (emailError || passwordError || confirmPasswordError) return;
 
-    Alert.alert('Formulario válido', `Continuarías el inicio de sesión con: ${email}`);
+    Alert.alert('Formulario válido', `Crearías la cuenta con: ${email}`);
   }
 
-  function handleForgotPassword() {
-    router.push('/forgot-password');
-  }
-
-
-  function handleCreateAccount() {
-    router.push('/sign-up');
+  function handleGoToSignIn() {
+    router.push('/sign-in');
   }
 
   return (
@@ -50,8 +57,8 @@ export default function SignIn() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
-            <Text style={styles.title}>Iniciar sesión</Text>
-            <Text style={styles.subtitle}>Bienvenido de nuevo a Cine Teca</Text>
+            <Text style={styles.title}>Crear cuenta</Text>
+            <Text style={styles.subtitle}>Únete a Cine Teca</Text>
           </View>
 
           <View style={styles.form}>
@@ -70,27 +77,31 @@ export default function SignIn() {
               label="Contraseña"
               value={password}
               onChangeText={setPassword}
-              placeholder="Ingresa tu contraseña"
+              placeholder="Crea una contraseña"
               error={errors.password}
               description="Debe tener al menos 8 caracteres, con 1 mayúscula y 1 número"
               secureTextEntry
               autoComplete="password"
-              textContentType="password"
+              textContentType="newPassword"
             />
 
-            <AuthButton
-              label="¿Olvidaste tu contraseña?"
-              onPress={handleForgotPassword}
-              variant="link"
-              style={styles.forgotPassword}
+            <AuthTextField
+              label="Confirmar contraseña"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Repite tu contraseña"
+              error={errors.confirmPassword}
+              secureTextEntry
+              autoComplete="password"
+              textContentType="newPassword"
             />
 
-            <AuthButton label="Iniciar sesión" onPress={handleSubmit} />
+            <AuthButton label="Crear cuenta" onPress={handleSubmit} />
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>¿No tienes cuenta? </Text>
-            <AuthButton label="Crear cuenta" onPress={handleCreateAccount} variant="link" />
+            <Text style={styles.footerText}>¿Ya tienes cuenta? </Text>
+            <AuthButton label="Iniciar sesión" onPress={handleGoToSignIn} variant="link" />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -126,9 +137,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Spacing.md,
-  },
-  forgotPassword: {
-    alignSelf: 'flex-end',
   },
   footer: {
     flexDirection: 'row',
