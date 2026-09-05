@@ -1,4 +1,37 @@
-# Welcome to your Expo app 👋
+# Cine-Teca
+
+Aplicacion Expo/React Native para seguir peliculas. La autenticacion usa Supabase.
+
+## Configurar Supabase
+
+1. Crea un proyecto en [Supabase](https://supabase.com/dashboard).
+2. Copia `.env.example` a `.env`.
+3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` desde el dialogo **Connect** del proyecto.
+4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`.
+5. En **Authentication > URL Configuration**, configura la URL de la aplicacion para los enlaces de correo.
+
+La clave publica puede estar en la aplicacion. No uses nunca la clave `service_role` en Expo ni la subas al repositorio.
+
+## Ejecutar
+
+```bash
+npm install
+npm run start
+```
+
+Para abrir en navegador:
+
+```bash
+npm run web
+```
+
+Para comprobar TypeScript:
+
+```bash
+npx tsc --noEmit
+```
+
+La pantalla de inicio de sesion ya usa `supabase.auth.signInWithPassword`, el registro usa `signUp` y la recuperacion usa `resetPasswordForEmail`.
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 

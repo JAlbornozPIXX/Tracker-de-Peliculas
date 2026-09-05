@@ -7,17 +7,28 @@ import { AuthButton } from '@/modules/auth/components/auth-button';
 import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { validateEmail } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
+import { supabase } from '@/utils/supabase';
 
 export default function ForgotPassword() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const emailError = validateEmail(email);
     setError(emailError);
 
     if (emailError) return;
+
+    setIsSubmitting(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+    setIsSubmitting(false);
+
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
 
     router.push('/check-email');
   }
@@ -53,7 +64,11 @@ export default function ForgotPassword() {
               textContentType="emailAddress"
             />
 
-            <AuthButton label="Enviar instrucciones" onPress={handleSubmit} />
+            <AuthButton
+              label="Enviar instrucciones"
+              onPress={handleSubmit}
+              disabled={isSubmitting}
+            />
           </View>
 
           <View style={styles.footer}>

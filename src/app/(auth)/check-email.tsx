@@ -1,2 +1,2 @@
-export { default } from '@/modules/auth/pages/guest/ForgotPassword';
+export { default } from '@/modules/auth/pages/guest/CheckEmail';
 

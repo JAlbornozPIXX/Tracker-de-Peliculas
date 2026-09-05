@@ -15,6 +15,7 @@ import { AuthButton } from '@/modules/auth/components/auth-button';
 import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { validateEmail, validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
+import { supabase } from '@/utils/supabase';
 
 function validateConfirmPassword(password: string, confirmPassword: string): string | undefined {
   if (!confirmPassword) return 'Confirma tu contraseña';
@@ -32,8 +33,9 @@ export default function SignUp() {
     password?: string;
     confirmPassword?: string;
   }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const emailError = validateEmail(email);
     const passwordError = validatePassword(password);
     const confirmPasswordError = validateConfirmPassword(password, confirmPassword);
@@ -41,7 +43,21 @@ export default function SignUp() {
 
     if (emailError || passwordError || confirmPasswordError) return;
 
-    Alert.alert('Formulario válido', `Crearías la cuenta con: ${email}`);
+    setIsSubmitting(true);
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    setIsSubmitting(false);
+
+    if (error) {
+      Alert.alert('No se pudo crear la cuenta', error.message);
+      return;
+    }
+
+    if (data.session) {
+      router.replace('/explore');
+      return;
+    }
+
+    router.replace('/check-email');
   }
 
   function handleGoToSignIn() {
@@ -96,7 +112,7 @@ export default function SignUp() {
               textContentType="newPassword"
             />
 
-            <AuthButton label="Crear cuenta" onPress={handleSubmit} />
+            <AuthButton label="Crear cuenta" onPress={handleSubmit} disabled={isSubmitting} />
           </View>
 
           <View style={styles.footer}>

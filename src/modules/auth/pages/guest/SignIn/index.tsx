@@ -1,13 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,21 +15,32 @@ import { AuthButton } from '@/modules/auth/components/auth-button';
 import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { validateEmail, validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
+import { supabase } from '@/utils/supabase';
 
 export default function SignIn() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const emailError = validateEmail(email);
     const passwordError = validatePassword(password);
     setErrors({ email: emailError, password: passwordError });
 
     if (emailError || passwordError) return;
 
-    Alert.alert('Formulario válido', `Continuarías el inicio de sesión con: ${email}`);
+    setIsSubmitting(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setIsSubmitting(false);
+
+    if (error) {
+      Alert.alert('No se pudo iniciar sesión', error.message);
+      return;
+    }
+
+    router.replace('/explore');
   }
 
   function handleForgotPassword() {
@@ -85,7 +96,7 @@ export default function SignIn() {
               style={styles.forgotPassword}
             />
 
-            <AuthButton label="Iniciar sesión" onPress={handleSubmit} />
+            <AuthButton label="Iniciar sesión" onPress={handleSubmit} disabled={isSubmitting} />
           </View>
 
           <View style={styles.footer}>
