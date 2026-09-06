@@ -40,6 +40,19 @@ function MovieCard({ movie, compact = false }: { movie: Movie; compact?: boolean
   );
 }
 
+function SearchBar({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Buscar películas y series"
+      onPress={onPress}
+      style={styles.searchBar}>
+      <Text style={styles.searchBarIcon}>⌕</Text>
+      <Text style={styles.searchBarPlaceholder}>Buscar películas y series</Text>
+    </Pressable>
+  );
+}
+
 function SectionTitle({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionTitleRow}>
@@ -122,6 +135,8 @@ export default function ExploreScreen() {
           </Pressable>
         </View>
 
+        <SearchBar onPress={() => router.push('/search')} />
+
         <View style={styles.hero}>
           <View style={styles.heroGlow} />
           <Text style={styles.heroKicker}>TU CARTELERA PERSONAL</Text>
@@ -129,24 +144,9 @@ export default function ExploreScreen() {
           <Text style={styles.heroCopy}>
             Guarda, descubre y retoma tus películas sin perder el hilo.
           </Text>
-          <Pressable onPress={() => router.push('/explore')} style={styles.heroButton}>
+          <Pressable onPress={() => router.push('/search')} style={styles.heroButton}>
             <Text style={styles.heroButtonText}>Explorar catálogo</Text>
             <Text style={styles.arrow}>›</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.quickActions}>
-          <Pressable style={styles.quickAction} onPress={() => router.push('/explore')}>
-            <Text style={styles.quickIcon}>⌕</Text>
-            <Text style={styles.quickLabel}>Descubrir</Text>
-          </Pressable>
-          <Pressable style={styles.quickAction} onPress={() => router.push('/explore')}>
-            <Text style={styles.quickIcon}>+</Text>
-            <Text style={styles.quickLabel}>Añadir película</Text>
-          </Pressable>
-          <Pressable style={styles.quickAction} onPress={handleSignOut}>
-            <Text style={styles.quickIcon}>↗️</Text>
-            <Text style={styles.quickLabel}>Salir</Text>
           </Pressable>
         </View>
 
@@ -192,7 +192,7 @@ export default function ExploreScreen() {
           <Text style={styles.tabIcon}>⌂</Text>
           <Text style={styles.activeTabText}>Inicio</Text>
         </View>
-        <Pressable style={styles.tab} onPress={() => router.push('/explore')}>
+        <Pressable style={styles.tab} onPress={() => router.push('/search')}>
           <Text style={styles.tabIcon}>⌕</Text>
           <Text style={styles.tabText}>Descubre</Text>
         </Pressable>
@@ -227,10 +227,9 @@ const styles = StyleSheet.create({
   heroButton: { alignSelf: 'flex-start', marginTop: 18, backgroundColor: '#A83BDD', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   arrow: { color: '#FFFFFF', fontSize: 24, lineHeight: 18 },
-  quickActions: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-  quickAction: { flex: 1, minHeight: 76, padding: 12, borderRadius: 15, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', justifyContent: 'space-between' },
-  quickIcon: { color: '#D78CFF', fontSize: 23, fontWeight: '400' },
-  quickLabel: { color: '#E5E1E7', fontSize: 11, fontWeight: '700' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', marginBottom: 22 },
+  searchBarIcon: { color: '#D78CFF', fontSize: 18 },
+  searchBarPlaceholder: { color: '#7D7382', fontSize: 14 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 },
   sectionTitle: { color: '#F4F4F5', fontSize: 21, fontWeight: '800' },
   sectionCount: { color: '#7D7382', fontSize: 12 },
