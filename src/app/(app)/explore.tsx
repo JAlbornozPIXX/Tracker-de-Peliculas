@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/modules/auth/context/AuthContext';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -64,6 +65,7 @@ function SectionTitle({ title, count }: { title: string; count?: number }) {
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [watchlist, setWatchlist] = useState<TrackedMovie[]>([]);
@@ -107,8 +109,7 @@ export default function ExploreScreen() {
   }, []);
 
   async function handleSignOut() {
-    await supabase.auth.signOut({ scope: 'local' });
-    router.replace('/sign-in');
+    await signOut();
   }
 
   if (loading) {

@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -18,11 +19,12 @@ export default function ForgotPassword() {
   async function handleSubmit() {
     const emailError = validateEmail(email);
     setError(emailError);
-
     if (emailError) return;
 
     setIsSubmitting(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+    const redirectTo = Linking.createURL('reset-password');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
     setIsSubmitting(false);
 
     if (resetError) {
