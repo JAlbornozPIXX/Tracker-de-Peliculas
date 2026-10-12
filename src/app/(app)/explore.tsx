@@ -1,17 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth } from '@/modules/auth/context/AuthContext';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -27,9 +26,9 @@ type TrackedMovie = {
   movies: Movie | null;
 };
 
-function MovieCard({ movie, compact = false }: { movie: Movie; compact?: boolean }) {
+function MovieCard({ movie, compact = false, onPress }: { movie: Movie; compact?: boolean; onPress?: () => void }) {
   return (
-    <View style={[styles.movieCard, compact && styles.compactMovieCard]}>
+    <Pressable onPress={onPress} style={[styles.movieCard, compact && styles.compactMovieCard]}>
       <View style={styles.posterPlaceholder}>
         <Text style={styles.posterMark}>C</Text>
       </View>
@@ -37,7 +36,7 @@ function MovieCard({ movie, compact = false }: { movie: Movie; compact?: boolean
         {movie.title}
       </Text>
       <Text style={styles.movieMeta}>Película</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -65,7 +64,6 @@ function SectionTitle({ title, count }: { title: string; count?: number }) {
 
 export default function ExploreScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [watchlist, setWatchlist] = useState<TrackedMovie[]>([]);
@@ -108,10 +106,6 @@ export default function ExploreScreen() {
     loadHome();
   }, []);
 
-  async function handleSignOut() {
-    await signOut();
-  }
-
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
@@ -131,7 +125,7 @@ export default function ExploreScreen() {
             <Text style={styles.eyebrow}>CINE-TECA</Text>
             <Text style={styles.greeting}>Tu espacio de cine</Text>
           </View>
-          <Pressable accessibilityLabel="Cerrar sesión" onPress={handleSignOut} style={styles.avatar}>
+          <Pressable accessibilityLabel="Ver perfil" onPress={() => router.push('/profile')} style={styles.avatar}>
             <Text style={styles.avatarText}>CT</Text>
           </Pressable>
         </View>
@@ -154,7 +148,16 @@ export default function ExploreScreen() {
         <SectionTitle title="Continuar viendo" count={watching.length} />
         {watching.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {watching.map((item) => item.movies && <MovieCard key={item.movie_id} movie={item.movies} />)}
+            {watching.map(
+              (item) =>
+                item.movies && (
+                  <MovieCard
+                    key={item.movie_id}
+                    movie={item.movies}
+                    onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
+                  />
+                )
+            )}
           </ScrollView>
         ) : (
           <View style={styles.emptyPanel}>
@@ -166,7 +169,16 @@ export default function ExploreScreen() {
         <SectionTitle title="Mi lista" count={watchlist.length} />
         {watchlist.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {watchlist.map((item) => item.movies && <MovieCard key={item.movie_id} movie={item.movies} />)}
+            {watchlist.map(
+              (item) =>
+                item.movies && (
+                  <MovieCard
+                    key={item.movie_id}
+                    movie={item.movies}
+                    onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
+                  />
+                )
+            )}
           </ScrollView>
         ) : (
           <View style={styles.emptyPanel}>
@@ -178,7 +190,14 @@ export default function ExploreScreen() {
         <SectionTitle title="Catálogo" count={movies.length} />
         {movies.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {movies.map((movie) => <MovieCard key={movie.id} movie={movie} compact />)}
+            {movies.map((movie) => (
+              <MovieCard
+                key={movie.id}
+                movie={movie}
+                compact
+                onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
+              />
+            ))}
           </ScrollView>
         ) : (
           <View style={styles.emptyPanel}>
@@ -201,7 +220,7 @@ export default function ExploreScreen() {
           <Text style={styles.tabIcon}>≡</Text>
           <Text style={styles.tabText}>Listas</Text>
         </View>
-        <Pressable style={styles.tab} onPress={handleSignOut}>
+        <Pressable style={styles.tab} onPress={() => router.push('/profile')}>
           <Text style={styles.tabIcon}>●</Text>
           <Text style={styles.tabText}>Perfil</Text>
         </Pressable>

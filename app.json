@@ -33,6 +33,12 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil."
+        }
       ]
     ],
     "experiments": {
