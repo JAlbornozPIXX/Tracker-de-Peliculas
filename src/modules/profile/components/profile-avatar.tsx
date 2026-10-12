@@ -6,15 +6,23 @@ type ProfileAvatarProps = {
   label: string;
   size?: number;
   loading?: boolean;
+  accessibilityLabel?: string;
   onPress?: () => void;
 };
 
-export function ProfileAvatar({ avatarUrl, label, size = 72, loading = false, onPress }: ProfileAvatarProps) {
+export function ProfileAvatar({
+  avatarUrl,
+  label,
+  size = 72,
+  loading = false,
+  accessibilityLabel = 'Cambiar foto de perfil',
+  onPress,
+}: ProfileAvatarProps) {
   const initial = label.trim().charAt(0).toUpperCase() || '?';
   const dimensionStyle = { width: size, height: size, borderRadius: size / 2 };
 
   return (
-    <Pressable accessibilityLabel="Cambiar foto de perfil" onPress={onPress} style={[styles.wrapper, dimensionStyle]}>
+    <Pressable accessibilityLabel={accessibilityLabel} onPress={onPress} style={[styles.wrapper, dimensionStyle]}>
       {avatarUrl ? (
         <Image source={{ uri: avatarUrl }} style={[styles.image, dimensionStyle]} contentFit="cover" transition={150} />
       ) : (

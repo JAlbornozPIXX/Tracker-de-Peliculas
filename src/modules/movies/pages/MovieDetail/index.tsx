@@ -1,11 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import { getMovieById, MovieRow } from '@/modules/movies/api/movies';
+import { MovieListsPicker } from '@/modules/lists/components/movie-lists-picker';
+import { ensureMovieFromTmdb, findMovieIdByTmdb, getMovieById, MovieRow } from '@/modules/movies/api/movies';
+import { getMovieDetails, MovieDetails } from '@/modules/movies/api/tmdb';
 import { getUserMovie, setStatus, updateRating, updateNotes } from '@/modules/movies/api/user-movies';
 import { StatusKey } from '@/modules/movies/constants/status';
 import { StatusPicker } from '@/modules/movies/components/status-picker';
@@ -14,15 +16,35 @@ import { StarRatingInput } from '@/modules/movies/components/star-rating-input';
 const NOTES_MAX = 2000;
 const NOTES_DEBOUNCE_MS = 900;
 
+type MovieView = Pick<MovieDetails, 'title' | 'overview' | 'posterUrl' | 'year' | 'genres' | 'durationMinutes'>;
+
+function toMovieView(row: MovieRow): MovieView {
+  return {
+    title: row.title,
+    overview: row.overview,
+    posterUrl: row.poster_url,
+    genres: row.genre,
+    year: row.release_date ? row.release_date.slice(0, 4) : null,
+    durationMinutes: row.duration_minutes,
+  };
+}
+
 export default function MovieDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, mediaType } = useLocalSearchParams<{ id: string; mediaType?: string }>();
   const movieId = Number(id);
+  // Con mediaType el id es de TheMovieDB (viene de la búsqueda); sin él es el
+  // id interno de la tabla movies. user_movies y list_movies solo aceptan el
+  // id interno, así que un título de TheMovieDB se crea en movies la primera
+  // vez que se le pone un estado o se agrega a una lista.
+  const tmdbMediaType = mediaType === 'movie' || mediaType === 'tv' ? mediaType : null;
   const router = useRouter();
   const { session } = useAuth();
   const userId = session?.user.id;
 
   const [loading, setLoading] = useState(true);
-  const [movie, setMovie] = useState<MovieRow | null>(null);
+  const [movie, setMovie] = useState<MovieView | null>(null);
+  const [tmdbDetails, setTmdbDetails] = useState<MovieDetails | null>(null);
+  const [tmdbInternalId, setTmdbInternalId] = useState<number | null>(null);
   const [status, setStatusState] = useState<StatusKey | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
@@ -30,13 +52,45 @@ export default function MovieDetail() {
   const hasLoaded = useRef(false);
   const latestNotes = useRef(notes);
 
+  // null mientras un título de TheMovieDB todavía no existe en movies.
+  const internalId = tmdbMediaType ? tmdbInternalId : movieId;
+
   useEffect(() => {
     if (!userId || Number.isNaN(movieId)) return;
+
+    if (tmdbMediaType) {
+      const controller = new AbortController();
+      Promise.all([
+        getMovieDetails(movieId, tmdbMediaType, controller.signal),
+        // Si la búsqueda en movies falla, el detalle se muestra igual.
+        findMovieIdByTmdb(movieId, tmdbMediaType).catch(() => null),
+      ])
+        .then(async ([details, foundId]) => {
+          const tracking = foundId != null ? await getUserMovie(userId, foundId) : null;
+          if (controller.signal.aborted) return;
+          setMovie(details);
+          setTmdbDetails(details);
+          setTmdbInternalId(foundId);
+          setStatusState(tracking?.status ?? null);
+          setRating(tracking?.rating ?? null);
+          setNotes(tracking?.notes ?? '');
+          hasLoaded.current = true;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === 'AbortError') return;
+          Alert.alert('No se pudo cargar la película', err instanceof Error ? err.message : '');
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+      return () => controller.abort();
+    }
+
     let active = true;
     Promise.all([getMovieById(movieId), getUserMovie(userId, movieId)])
       .then(([movieData, tracking]) => {
         if (!active) return;
-        setMovie(movieData);
+        setMovie(movieData && toMovieView(movieData));
         setStatusState(tracking?.status ?? null);
         setRating(tracking?.rating ?? null);
         setNotes(tracking?.notes ?? '');
@@ -47,7 +101,7 @@ export default function MovieDetail() {
     return () => {
       active = false;
     };
-  }, [userId, movieId]);
+  }, [userId, movieId, tmdbMediaType]);
 
   useEffect(() => {
     latestNotes.current = notes;
@@ -55,37 +109,55 @@ export default function MovieDetail() {
 
   const debouncedNotes = useDebouncedValue(notes, NOTES_DEBOUNCE_MS);
   useEffect(() => {
-    if (!hasLoaded.current || !userId || status == null) return;
+    if (!hasLoaded.current || !userId || internalId == null || status == null) return;
     setNoteSaveState('saving');
-    updateNotes(userId, movieId, debouncedNotes || null).then(({ error }) => {
+    updateNotes(userId, internalId, debouncedNotes || null).then(({ error }) => {
       setNoteSaveState(error ? 'idle' : 'saved');
       if (error) Alert.alert('No se pudo guardar la nota', error.message);
     });
-  }, [debouncedNotes, userId, movieId, status]);
+  }, [debouncedNotes, userId, internalId, status]);
 
   // Guarda cualquier texto pendiente de inmediato al salir, para que navegar
   // justo después de escribir no pierda texto todavía dentro de la ventana
   // de espera del debounce.
   useEffect(() => {
     return () => {
-      if (userId && status != null) {
-        updateNotes(userId, movieId, latestNotes.current || null);
+      if (userId && internalId != null && status != null) {
+        updateNotes(userId, internalId, latestNotes.current || null);
       }
     };
-  }, [userId, movieId, status]);
+  }, [userId, internalId, status]);
 
   async function handleStatusChange(next: StatusKey) {
+    const previous = status;
     setStatusState(next);
     if (!userId) return;
-    const { error } = await setStatus(userId, movieId, next);
-    if (error) Alert.alert('No se pudo actualizar el estado', error.message);
+    try {
+      let id = internalId;
+      if (id == null) {
+        if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
+        id = await ensureMovieFromTmdb(tmdbDetails);
+        setTmdbInternalId(id);
+      }
+      const { error } = await setStatus(userId, id, next);
+      if (error) throw error;
+    } catch (err) {
+      setStatusState(previous);
+      Alert.alert('No se pudo actualizar el estado', err instanceof Error ? err.message : '');
+    }
   }
 
   async function handleRatingChange(next: number | null) {
     setRating(next);
-    if (!userId) return;
-    const { error } = await updateRating(userId, movieId, next);
+    if (!userId || internalId == null) return;
+    const { error } = await updateRating(userId, internalId, next);
     if (error) Alert.alert('No se pudo guardar la calificación', error.message);
+  }
+
+  async function ensureListMovieId() {
+    if (internalId != null) return internalId;
+    if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
+    return ensureMovieFromTmdb(tmdbDetails);
   }
 
   if (loading) {
@@ -111,18 +183,23 @@ export default function MovieDetail() {
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
 
-        <View style={styles.posterPlaceholder}>
-          <Text style={styles.posterMark}>{movie.title.charAt(0).toUpperCase()}</Text>
-        </View>
+        {movie.posterUrl ? (
+          <Image accessibilityIgnoresInvertColors source={{ uri: movie.posterUrl }} style={styles.poster} resizeMode="cover" />
+        ) : (
+          <View style={styles.posterPlaceholder}>
+            <Text style={styles.posterMark}>{movie.title.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
         <Text style={styles.title}>{movie.title}</Text>
         {movie.overview && <Text style={styles.overview}>{movie.overview}</Text>}
         <View style={styles.metaRow}>
-          {movie.genre.map((g) => (
+          {movie.genres.map((g) => (
             <View key={g} style={styles.genrePill}>
               <Text style={styles.genrePillText}>{g}</Text>
             </View>
           ))}
-          {movie.duration_minutes != null && <Text style={styles.durationText}>{movie.duration_minutes} min</Text>}
+          {movie.year && <Text style={styles.durationText}>{movie.year}</Text>}
+          {movie.durationMinutes != null && <Text style={styles.durationText}>{movie.durationMinutes} min</Text>}
         </View>
 
         <Text style={styles.sectionLabel}>Estado</Text>
@@ -157,6 +234,9 @@ export default function MovieDetail() {
             </View>
           </>
         )}
+
+        <Text style={styles.sectionLabel}>Listas</Text>
+        <MovieListsPicker movieId={internalId} ensureMovieId={ensureListMovieId} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -168,6 +248,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48, gap: 6 },
   backButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   backIcon: { color: '#F4F4F5', fontSize: 22, lineHeight: 22 },
+  poster: { width: 180, aspectRatio: 2 / 3, alignSelf: 'center', borderRadius: 18, backgroundColor: '#21172A', marginBottom: 14 },
   posterPlaceholder: { height: 220, borderRadius: 18, backgroundColor: '#21172A', borderWidth: 1, borderColor: '#432653', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
   posterMark: { color: '#9F43D4', fontSize: 64, fontWeight: '900', opacity: 0.7 },
   title: { color: '#F4F4F5', fontSize: 23, fontWeight: '800' },

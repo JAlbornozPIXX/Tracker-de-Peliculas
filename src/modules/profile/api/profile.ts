@@ -7,22 +7,24 @@ export type Profile = {
     id: string;
     displayName: string | null;
     avatarUrl: string | null;
+    updatedAt: string | null;
 };
 
 type ProfileRow = {
     id: string;
     display_name: string | null;
     avatar_url: string | null;
+    updated_at: string | null;
 };
 
 function mapProfileRowToProfile(row: ProfileRow): Profile {
-    return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url };
+    return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url, updatedAt: row.updated_at };
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, display_name, avatar_url')
+    .select('id, display_name, avatar_url, updated_at')
     .eq('id', userId)
     .maybeSingle();
 

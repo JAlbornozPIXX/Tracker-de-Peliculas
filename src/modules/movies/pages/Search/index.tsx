@@ -5,27 +5,43 @@ import {
   FlatList,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { MovieResultCard } from '@/modules/movies/components/movie-result-card';
-import { MovieResult, TmdbConfigError, searchMovies } from '@/modules/movies/api/tmdb';
+import {
+  Genre,
+  MovieResult,
+  TmdbConfigError,
+  discoverMoviesByGenres,
+  getMovieGenres,
+  searchMovies,
+} from '@/modules/movies/api/tmdb';
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_QUERY_LENGTH = 2;
 
 export default function Search() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreController = useRef<AbortController | null>(null);
 
   const trimmedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
@@ -35,8 +51,35 @@ export default function Search() {
     return () => clearTimeout(focusTimeout);
   }, []);
 
+  // Sin categorías la búsqueda por texto sigue funcionando, así que un fallo
+  // aquí no se muestra como error.
   useEffect(() => {
-    if (debouncedQuery.length < MIN_QUERY_LENGTH) {
+    const controller = new AbortController();
+    getMovieGenres(controller.signal)
+      .then(setGenres)
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  // Con texto se busca por nombre (filtrando por las categorías elegidas, si
+  // hay); solo con categorías se muestran sus películas más populares.
+  const fetchPage = useCallback(
+    (pageNumber: number, signal: AbortSignal) =>
+      debouncedQuery.length >= MIN_QUERY_LENGTH
+        ? searchMovies(debouncedQuery, signal, selectedGenreIds, pageNumber)
+        : discoverMoviesByGenres(selectedGenreIds, signal, pageNumber),
+    [debouncedQuery, selectedGenreIds]
+  );
+
+  useEffect(() => {
+    const hasQuery = debouncedQuery.length >= MIN_QUERY_LENGTH;
+    // Una búsqueda nueva descarta cualquier página siguiente en camino.
+    loadMoreController.current?.abort();
+    setLoadingMore(false);
+    setPage(1);
+    setTotalPages(0);
+
+    if (!hasQuery && selectedGenreIds.length === 0) {
       setResults([]);
       setLoading(false);
       setError(null);
@@ -48,9 +91,10 @@ export default function Search() {
     setError(null);
     setResults([]);
 
-    searchMovies(debouncedQuery, controller.signal)
-      .then((movies) => {
-        setResults(movies);
+    fetchPage(1, controller.signal)
+      .then((firstPage) => {
+        setResults(firstPage.results);
+        setTotalPages(firstPage.totalPages);
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -70,7 +114,33 @@ export default function Search() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery]);
+  }, [debouncedQuery, selectedGenreIds, fetchPage]);
+
+  // Al llegar al final de la lista se pide la página siguiente y se agrega
+  // debajo de lo que ya está en pantalla.
+  function handleLoadMore() {
+    if (loading || loadingMore || results.length === 0 || page >= totalPages) return;
+
+    const controller = new AbortController();
+    loadMoreController.current = controller;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+
+    fetchPage(nextPage, controller.signal)
+      .then((next) => {
+        if (controller.signal.aborted) return;
+        setPage(nextPage);
+        setResults((current) => {
+          const seen = new Set(current.map((item) => `${item.mediaType}-${item.id}`));
+          return [...current, ...next.results.filter((item) => !seen.has(`${item.mediaType}-${item.id}`))];
+        });
+      })
+      // Si falla, se conserva lo ya cargado y se puede reintentar deslizando.
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingMore(false);
+      });
+  }
 
   const handleClear = useCallback(() => {
     setQuery('');
@@ -84,9 +154,11 @@ export default function Search() {
     router.back();
   }, [router]);
 
-  const showHint = trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH;
+  const hasDebouncedQuery = debouncedQuery.length >= MIN_QUERY_LENGTH;
+  const hasGenres = selectedGenreIds.length > 0;
+  const showHint = !hasGenres && trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH;
   const showEmptyState =
-    !loading && !error && !showHint && debouncedQuery.length >= MIN_QUERY_LENGTH && results.length === 0;
+    !loading && !error && !showHint && (hasDebouncedQuery || hasGenres) && results.length === 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -120,14 +192,58 @@ export default function Search() {
         </View>
       </View>
 
+      {genres.length > 0 && (
+        <View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.genreRow}>
+            {genres.map((genre) => {
+              const active = selectedGenreIds.includes(genre.id);
+              return (
+                <Pressable
+                  key={genre.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Categoría ${genre.name}`}
+                  onPress={() =>
+                    setSelectedGenreIds((current) =>
+                      active ? current.filter((id) => id !== genre.id) : [...current, genre.id]
+                    )
+                  }
+                  style={[styles.genreChip, active && styles.genreChipActive]}>
+                  <Text style={[styles.genreChipText, active && styles.genreChipTextActive]}>{genre.name}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       <FlatList
         data={results}
         keyExtractor={(item) => `${item.mediaType}-${item.id}`}
-        renderItem={({ item }) => <MovieResultCard movie={item} />}
-        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) => (
+          <MovieResultCard
+            movie={item}
+            onPress={() =>
+              router.push({
+                pathname: '/movie/[id]',
+                params: { id: String(item.id), mediaType: item.mediaType },
+              })
+            }
+          />
+        )}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + BOTTOM_BAR_SPACE }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.6}
+        ListFooterComponent={
+          loadingMore ? <ActivityIndicator color="#B94DFF" style={styles.footerSpinner} /> : null
+        }
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator color="#B94DFF" size="large" style={styles.stateSpacing} />
@@ -135,7 +251,11 @@ export default function Search() {
             <Text style={[styles.stateText, styles.errorText, styles.stateSpacing]}>{error}</Text>
           ) : showEmptyState ? (
             <Text style={[styles.stateText, styles.stateSpacing]}>
-              No encontramos resultados para “{debouncedQuery}”.
+              {hasDebouncedQuery
+                ? `No encontramos resultados para “${debouncedQuery}”${hasGenres ? (selectedGenreIds.length === 1 ? ' en esta categoría' : ' en estas categorías') : ''}.`
+                : selectedGenreIds.length === 1
+                  ? 'No encontramos títulos en esta categoría.'
+                  : 'No encontramos títulos que estén en todas estas categorías.'}
             </Text>
           ) : showHint ? (
             <Text style={[styles.stateText, styles.stateSpacing]}>
@@ -143,11 +263,13 @@ export default function Search() {
             </Text>
           ) : (
             <Text style={[styles.stateText, styles.stateSpacing]}>
-              Busca tus películas y series favoritas de TheMovieDB.
+              Busca tus películas y series favoritas de TheMovieDB o elige una categoría.
             </Text>
           )
         }
       />
+
+      <BottomBar active="search" />
     </SafeAreaView>
   );
 }
@@ -189,7 +311,13 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: '100%', color: '#F4F4F5', fontSize: 15 },
   clearIcon: { color: '#7D7382', fontSize: 15, paddingLeft: 6 },
   listContent: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
+  genreRow: { gap: 8, paddingHorizontal: 16, paddingBottom: 14 },
+  genreChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
+  genreChipActive: { backgroundColor: '#403B47', borderColor: '#B94DFF' },
+  genreChipText: { color: '#A1A1AA', fontSize: 13, fontWeight: '600' },
+  genreChipTextActive: { color: '#F4F4F5', fontWeight: '800' },
   separator: { height: 12 },
+  footerSpinner: { marginTop: 20 },
   stateSpacing: { marginTop: 60 },
   stateText: { color: '#8F8795', fontSize: 14, textAlign: 'center', lineHeight: 20 },
   errorText: { color: '#F87171' },

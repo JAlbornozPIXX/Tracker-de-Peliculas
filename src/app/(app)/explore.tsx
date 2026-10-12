@@ -1,8 +1,9 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
+import { ListsSection } from '@/modules/lists/components/lists-section';
+import { getProfile } from '@/modules/profile/api/profile';
+import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -30,7 +35,11 @@ function MovieCard({ movie, compact = false, onPress }: { movie: Movie; compact?
   return (
     <Pressable onPress={onPress} style={[styles.movieCard, compact && styles.compactMovieCard]}>
       <View style={styles.posterPlaceholder}>
-        <Text style={styles.posterMark}>C</Text>
+        {movie.poster_url ? (
+          <Image accessibilityIgnoresInvertColors source={{ uri: movie.poster_url }} style={styles.poster} resizeMode="cover" />
+        ) : (
+          <Text style={styles.posterMark}>{movie.title.charAt(0).toUpperCase()}</Text>
+        )}
       </View>
       <Text numberOfLines={2} style={styles.movieTitle}>
         {movie.title}
@@ -66,45 +75,67 @@ export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [movies, setMovies] = useState<Movie[]>([]);
-  const [watchlist, setWatchlist] = useState<TrackedMovie[]>([]);
   const [watching, setWatching] = useState<TrackedMovie[]>([]);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarLabel, setAvatarLabel] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadHome() {
-      const [movieResult, userResult] = await Promise.all([
-        supabase
-          .from('movies')
-          .select('id, title, overview, poster_url')
-          .order('title'),
-        supabase.auth.getUser(),
-      ]);
+  // Se recarga al volver a la pantalla para reflejar los estados cambiados
+  // desde el detalle de una película y la foto cambiada desde el perfil.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
-      if (movieResult.error) {
-        Alert.alert('No se pudo cargar el catálogo', movieResult.error.message);
-      } else {
-        setMovies(movieResult.data ?? []);
-      }
+      async function loadHome() {
+        const [movieResult, userResult] = await Promise.all([
+          supabase
+            .from('movies')
+            .select('id, title, overview, poster_url')
+            .order('title'),
+          supabase.auth.getUser(),
+        ]);
+        if (!active) return;
 
-      const userId = userResult.data.user?.id;
-      if (userId) {
-        const { data, error } = await supabase
-          .from('user_movies')
-          .select('movie_id, status, movies(id, title, overview, poster_url)')
-          .eq('user_id', userId);
-
-        if (!error) {
-          const tracked = (data ?? []) as unknown as TrackedMovie[];
-          setWatchlist(tracked.filter((item) => item.status === 'watchlist'));
-          setWatching(tracked.filter((item) => item.status === 'watching'));
+        if (movieResult.error) {
+          Alert.alert('No se pudo cargar el catálogo', movieResult.error.message);
+        } else {
+          setMovies(movieResult.data ?? []);
         }
+
+        const userId = userResult.data.user?.id;
+        if (userId) {
+          const [{ data, error }, profile] = await Promise.all([
+            supabase
+              .from('user_movies')
+              .select('movie_id, status, movies(id, title, overview, poster_url)')
+              .eq('user_id', userId),
+            // Sin perfil se muestra la inicial del correo.
+            getProfile(userId).catch(() => null),
+          ]);
+          if (!active) return;
+
+          // La foto se sube siempre a la misma URL; updated_at cambia con cada
+          // subida y evita que se muestre la imagen anterior desde la caché.
+          setAvatarUrl(
+            profile?.avatarUrl ? `${profile.avatarUrl}?t=${encodeURIComponent(profile.updatedAt ?? '')}` : null
+          );
+          setAvatarLabel(profile?.displayName || userResult.data.user?.email || '');
+
+          if (!error) {
+            const tracked = (data ?? []) as unknown as TrackedMovie[];
+            setWatching(tracked.filter((item) => item.status === 'watching'));
+          }
+        }
+
+        setLoading(false);
       }
 
-      setLoading(false);
-    }
-
-    loadHome();
-  }, []);
+      loadHome();
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   if (loading) {
     return (
@@ -118,16 +149,21 @@ export default function ExploreScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 112 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + BOTTOM_BAR_SPACE }]}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <View>
             <Text style={styles.eyebrow}>CINE-TECA</Text>
             <Text style={styles.greeting}>Tu espacio de cine</Text>
           </View>
-          <Pressable accessibilityLabel="Ver perfil" onPress={() => router.push('/profile')} style={styles.avatar}>
-            <Text style={styles.avatarText}>CT</Text>
-          </Pressable>
+          <ProfileAvatar
+            avatarUrl={avatarUrl}
+            label={avatarLabel}
+            size={42}
+            accessibilityLabel="Ver perfil"
+            onPress={() => router.push('/profile')}
+          />
         </View>
 
         <SearchBar onPress={() => router.push('/search')} />
@@ -166,26 +202,7 @@ export default function ExploreScreen() {
           </View>
         )}
 
-        <SectionTitle title="Mi lista" count={watchlist.length} />
-        {watchlist.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {watchlist.map(
-              (item) =>
-                item.movies && (
-                  <MovieCard
-                    key={item.movie_id}
-                    movie={item.movies}
-                    onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
-                  />
-                )
-            )}
-          </ScrollView>
-        ) : (
-          <View style={styles.emptyPanel}>
-            <Text style={styles.emptyTitle}>Tu lista está esperando</Text>
-            <Text style={styles.emptyCopy}>Guarda títulos para tenerlos a mano después.</Text>
-          </View>
-        )}
+        <ListsSection />
 
         <SectionTitle title="Catálogo" count={movies.length} />
         {movies.length > 0 ? (
@@ -207,24 +224,7 @@ export default function ExploreScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.bottomBar, { bottom: Math.max(insets.bottom + 12, 18) }]}>
-        <View style={[styles.tab, styles.activeTab]}>
-          <Text style={styles.tabIcon}>⌂</Text>
-          <Text style={styles.activeTabText}>Inicio</Text>
-        </View>
-        <Pressable style={styles.tab} onPress={() => router.push('/search')}>
-          <Text style={styles.tabIcon}>⌕</Text>
-          <Text style={styles.tabText}>Descubre</Text>
-        </Pressable>
-        <View style={styles.tab}>
-          <Text style={styles.tabIcon}>≡</Text>
-          <Text style={styles.tabText}>Listas</Text>
-        </View>
-        <Pressable style={styles.tab} onPress={() => router.push('/profile')}>
-          <Text style={styles.tabIcon}>●</Text>
-          <Text style={styles.tabText}>Perfil</Text>
-        </Pressable>
-      </View>
+      <BottomBar active="home" />
     </SafeAreaView>
   );
 }
@@ -237,8 +237,6 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
   eyebrow: { color: '#B94DFF', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   greeting: { color: '#F4F4F5', fontSize: 23, fontWeight: '700', marginTop: 4 },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#25212D', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#4A315C' },
-  avatarText: { color: '#D6A5FF', fontSize: 12, fontWeight: '800' },
   hero: { overflow: 'hidden', minHeight: 220, borderRadius: 22, padding: 22, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', justifyContent: 'flex-end', marginBottom: 16 },
   heroGlow: { position: 'absolute', right: -70, top: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: '#8B2FC1', opacity: 0.35 },
   heroKicker: { color: '#D78CFF', fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginBottom: 10 },
@@ -257,16 +255,11 @@ const styles = StyleSheet.create({
   movieCard: { width: 142 },
   compactMovieCard: { width: 128 },
   posterPlaceholder: { height: 178, borderRadius: 15, backgroundColor: '#21172A', borderWidth: 1, borderColor: '#432653', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  poster: { width: '100%', height: '100%' },
   posterMark: { color: '#9F43D4', fontSize: 54, fontWeight: '900', opacity: 0.7 },
   movieTitle: { color: '#F4F4F5', fontSize: 14, lineHeight: 18, fontWeight: '700', marginTop: 9 },
   movieMeta: { color: '#81788A', fontSize: 11, marginTop: 4 },
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 18, marginBottom: 24 },
   emptyTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '700' },
   emptyCopy: { color: '#8F8795', fontSize: 13, lineHeight: 19, marginTop: 6 },
-  bottomBar: { position: 'absolute', left: 18, right: 18, bottom: 18, height: 70, borderRadius: 28, backgroundColor: '#29262F', borderWidth: 1, borderColor: '#47414D', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 8 },
-  tab: { alignItems: 'center', justifyContent: 'center', minWidth: 62, gap: 4 },
-  activeTab: { backgroundColor: '#403B47', borderRadius: 22, paddingVertical: 8, paddingHorizontal: 13 },
-  tabIcon: { color: '#D5D0D8', fontSize: 20, lineHeight: 21 },
-  tabText: { color: '#D5D0D8', fontSize: 10, fontWeight: '600' },
-  activeTabText: { color: '#B94DFF', fontSize: 10, fontWeight: '800' },
 });

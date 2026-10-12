@@ -1,3 +1,4 @@
+import type { MovieDetails, MovieResultType } from '@/modules/movies/api/tmdb';
 import { supabase } from '@/utils/supabase';
 
 export type MovieRow = {
@@ -21,6 +22,50 @@ export async function getMovieById(movieId: number): Promise<MovieRow | null> {
 
   if (error) throw error;
   return data;
+}
+
+export async function findMovieIdByTmdb(tmdbId: number, mediaType: MovieResultType): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('movies')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+/**
+ * Devuelve el id interno de un título de TheMovieDB, creando la fila en
+ * movies si todavía no existe.
+ */
+export async function ensureMovieFromTmdb(details: MovieDetails): Promise<number> {
+  const existingId = await findMovieIdByTmdb(details.id, details.mediaType);
+  if (existingId != null) return existingId;
+
+  const { data, error } = await supabase
+    .from('movies')
+    .insert({
+      tmdb_id: details.id,
+      media_type: details.mediaType,
+      title: details.title,
+      overview: details.overview,
+      poster_url: details.posterUrl,
+      genre: details.genres,
+      release_date: details.releaseDate,
+      duration_minutes: details.durationMinutes,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Otra sesión pudo crear la misma fila entre la consulta y el insert.
+    const racedId = await findMovieIdByTmdb(details.id, details.mediaType);
+    if (racedId != null) return racedId;
+    throw error;
+  }
+  return data.id;
 }
 
 export async function getDistinctGenres(): Promise<string[]> {
