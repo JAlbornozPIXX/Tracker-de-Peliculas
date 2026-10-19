@@ -11,8 +11,8 @@ create table if not exists public.movies (
 create table if not exists public.user_movies (
   user_id uuid not null references auth.users(id) on delete cascade,
   movie_id bigint not null references public.movies(id) on delete cascade,
-  status text not null check (status in ('watchlist', 'watching', 'watched')),
-  rating numeric(2, 1) check (rating is null or (rating >= 0 and rating <= 5)),
+  status text not null check (status in ('watchlist', 'watching', 'watched', 'paused', 'abandoned')),
+  rating numeric(3, 2) check (rating is null or (rating >= 0 and rating <= 5 and rating * 4 = trunc(rating * 4))),
   notes text,
   updated_at timestamptz not null default now(),
   primary key (user_id, movie_id)
@@ -175,3 +175,53 @@ on storage.objects for update
 to authenticated
 using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)
 with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Contrato UI–BD de user_movies (re-ejecutable sobre bases creadas con el
+-- esquema anterior):
+--  * status admite los 5 estados de src/modules/movies/constants/status.ts.
+--  * rating guarda cuartos de estrella exactos (0,25 .. 5,00); numeric(2,1)
+--    redondeaba 4,25 a 4,3.
+alter table public.user_movies drop constraint if exists user_movies_status_check;
+alter table public.user_movies add constraint user_movies_status_check
+  check (status in ('watchlist', 'watching', 'watched', 'paused', 'abandoned'));
+
+alter table public.user_movies drop constraint if exists user_movies_rating_check;
+alter table public.user_movies alter column rating type numeric(3, 2);
+-- Valores que el tipo anterior ya redondeó (p. ej. 4,3) vuelven al cuarto más cercano.
+update public.user_movies set rating = round(rating * 4) / 4
+where rating is not null and rating * 4 <> trunc(rating * 4);
+alter table public.user_movies add constraint user_movies_rating_check
+  check (rating is null or (rating >= 0 and rating <= 5 and rating * 4 = trunc(rating * 4)));
+
+-- Perfiles: nombre visible y avatar (src/modules/profile/api/profile.ts usa upsert,
+-- por eso cada usuario necesita select, insert y update sobre su propia fila).
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  avatar_url text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "Users can read their profile" on public.profiles;
+drop policy if exists "Users can add their profile" on public.profiles;
+drop policy if exists "Users can update their profile" on public.profiles;
+
+create policy "Users can read their profile"
+on public.profiles for select
+to authenticated
+using ((select auth.uid()) = id);
+
+create policy "Users can add their profile"
+on public.profiles for insert
+to authenticated
+with check ((select auth.uid()) = id);
+
+create policy "Users can update their profile"
+on public.profiles for update
+to authenticated
+using ((select auth.uid()) = id)
+with check ((select auth.uid()) = id);
+
+grant select, insert, update on public.profiles to authenticated;

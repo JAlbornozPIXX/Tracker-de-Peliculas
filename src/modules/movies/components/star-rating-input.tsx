@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import { GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ratingFromPress } from '@/modules/movies/utils/star-rating';
+
 const STAR_COUNT = 5;
 const STAR_SIZE = 36;
 const GOLD = '#FFD700';
@@ -20,10 +22,7 @@ function Star({ fillFraction, gold }: { fillFraction: number; gold: boolean }) {
 export function StarRatingInput({ value, onChange }: { value: number | null; onChange: (next: number | null) => void }) {
   const handlePress = useCallback(
     (starIndex: number, event: GestureResponderEvent) => {
-      const x = event.nativeEvent.locationX;
-      const quarter = Math.min(4, Math.max(1, Math.ceil((x / STAR_SIZE) * 4)));
-      const next = starIndex + quarter * 0.25;
-      onChange(Math.round(next * 100) / 100);
+      onChange(ratingFromPress(starIndex, event.nativeEvent.locationX, STAR_SIZE));
     },
     [onChange]
   );
