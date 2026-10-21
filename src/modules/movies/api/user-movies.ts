@@ -1,5 +1,5 @@
-import { supabase } from '@/utils/supabase';
 import type { StatusKey } from '@/modules/movies/constants/status';
+import { supabase } from '@/utils/supabase';
 
 export type UserMovieRow = {
   status: StatusKey;
@@ -22,11 +22,17 @@ export async function getUserMovie(userId: string, movieId: number): Promise<Use
 // La única escritura que puede crear una fila nueva — ver nota en MovieDetail
 // sobre por qué rating/notes nunca deben ser la primera escritura para un
 // (user_id, movie_id) que todavía no existe (status es NOT NULL sin default).
-export function setStatus(userId: string, movieId: number, status: StatusKey) {
+export function setStatus(userId: string, movieId: number, status: StatusKey, rating?: number | null) {
   return supabase
     .from('user_movies')
     .upsert(
-      { user_id: userId, movie_id: movieId, status, updated_at: new Date().toISOString() },
+      {
+        user_id: userId,
+        movie_id: movieId,
+        status,
+        ...(rating !== undefined && { rating }),
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'user_id,movie_id' }
     );
 }

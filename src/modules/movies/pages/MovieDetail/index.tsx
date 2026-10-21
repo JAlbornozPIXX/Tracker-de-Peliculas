@@ -8,10 +8,10 @@ import { useAuth } from '@/modules/auth/context/AuthContext';
 import { MovieListsPicker } from '@/modules/lists/components/movie-lists-picker';
 import { ensureMovieFromTmdb, findMovieIdByTmdb, getMovieById, MovieRow } from '@/modules/movies/api/movies';
 import { getMovieDetails, MovieDetails } from '@/modules/movies/api/tmdb';
-import { getUserMovie, setStatus, updateRating, updateNotes } from '@/modules/movies/api/user-movies';
-import { StatusKey } from '@/modules/movies/constants/status';
-import { StatusPicker } from '@/modules/movies/components/status-picker';
+import { getUserMovie, setStatus, updateNotes, updateRating } from '@/modules/movies/api/user-movies';
 import { StarRatingInput } from '@/modules/movies/components/star-rating-input';
+import { StatusPicker } from '@/modules/movies/components/status-picker';
+import { StatusKey } from '@/modules/movies/constants/status';
 
 const NOTES_MAX = 2000;
 const NOTES_DEBOUNCE_MS = 900;
@@ -148,10 +148,31 @@ export default function MovieDetail() {
   }
 
   async function handleRatingChange(next: number | null) {
+    const previousRating = rating;
+    const previousStatus = status;
     setRating(next);
-    if (!userId || internalId == null) return;
-    const { error } = await updateRating(userId, internalId, next);
-    if (error) Alert.alert('No se pudo guardar la calificación', error.message);
+    if (!userId) return;
+    try {
+      if (status == null) {
+        // No hay fila en user_movies: se crea con estado Terminado y la calificación a la vez.
+        let id = internalId;
+        if (id == null) {
+          if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
+          id = await ensureMovieFromTmdb(tmdbDetails);
+          setTmdbInternalId(id);
+        }
+        setStatusState('watched');
+        const { error } = await setStatus(userId, id, 'watched', next);
+        if (error) throw error;
+      } else {
+        const { error } = await updateRating(userId, internalId!, next);
+        if (error) throw error;
+      }
+    } catch (err) {
+      setRating(previousRating);
+      setStatusState(previousStatus);
+      Alert.alert('No se pudo guardar la calificación', err instanceof Error ? err.message : '');
+    }
   }
 
   async function ensureListMovieId() {
@@ -205,15 +226,15 @@ export default function MovieDetail() {
         <Text style={styles.sectionLabel}>Estado</Text>
         <StatusPicker value={status} onChange={handleStatusChange} />
 
+        <Text style={styles.sectionLabel}>Calificación</Text>
+        <StarRatingInput value={rating} onChange={handleRatingChange} />
+
         {status == null ? (
           <View style={styles.emptyPanel}>
-            <Text style={styles.emptyCopy}>Elige un estado para empezar a calificar y escribir una nota.</Text>
+            <Text style={styles.emptyCopy}>Elige un estado o califica para escribir una nota.</Text>
           </View>
         ) : (
           <>
-            <Text style={styles.sectionLabel}>Calificación</Text>
-            <StarRatingInput value={rating} onChange={handleRatingChange} />
-
             <Text style={styles.sectionLabel}>Nota privada</Text>
             <TextInput
               value={notes}
