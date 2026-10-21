@@ -9,6 +9,7 @@ import { MovieListsPicker } from '@/modules/lists/components/movie-lists-picker'
 import { ensureMovieFromTmdb, findMovieIdByTmdb, getMovieById, MovieRow } from '@/modules/movies/api/movies';
 import { getMovieDetails, MovieDetails } from '@/modules/movies/api/tmdb';
 import { getUserMovie, setStatus, updateNotes, updateRating } from '@/modules/movies/api/user-movies';
+import { ReactionPicker } from '@/modules/movies/components/reaction-picker';
 import { StarRatingInput } from '@/modules/movies/components/star-rating-input';
 import { StatusPicker } from '@/modules/movies/components/status-picker';
 import { StatusKey } from '@/modules/movies/constants/status';
@@ -175,7 +176,7 @@ export default function MovieDetail() {
     }
   }
 
-  async function ensureListMovieId() {
+  async function ensureInternalMovieId() {
     if (internalId != null) return internalId;
     if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
     return ensureMovieFromTmdb(tmdbDetails);
@@ -227,7 +228,10 @@ export default function MovieDetail() {
         <StatusPicker value={status} onChange={handleStatusChange} />
 
         <Text style={styles.sectionLabel}>Calificación</Text>
-        <StarRatingInput value={rating} onChange={handleRatingChange} />
+        <View style={styles.ratingRow}>
+          <StarRatingInput value={rating} onChange={handleRatingChange} />
+          <ReactionPicker movieId={internalId} ensureMovieId={ensureInternalMovieId} />
+        </View>
 
         {status == null ? (
           <View style={styles.emptyPanel}>
@@ -257,7 +261,7 @@ export default function MovieDetail() {
         )}
 
         <Text style={styles.sectionLabel}>Listas</Text>
-        <MovieListsPicker movieId={internalId} ensureMovieId={ensureListMovieId} />
+        <MovieListsPicker movieId={internalId} ensureMovieId={ensureInternalMovieId} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -279,6 +283,7 @@ const styles = StyleSheet.create({
   genrePillText: { color: '#D78CFF', fontSize: 12, fontWeight: '700' },
   durationText: { color: '#81788A', fontSize: 12 },
   sectionLabel: { color: '#F4F4F5', fontSize: 16, fontWeight: '800', marginTop: 18, marginBottom: 10 },
+  ratingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10 },
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 16 },
   emptyCopy: { color: '#8F8795', fontSize: 13, lineHeight: 19 },
   noteInput: { minHeight: 120, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', borderRadius: 14, padding: 14, color: '#F4F4F5', fontSize: 14, textAlignVertical: 'top' },
