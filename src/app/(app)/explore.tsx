@@ -3,7 +3,6 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
+import { GoldenPoster } from '@/components/golden-poster';
 import { ListsSection } from '@/modules/lists/components/lists-section';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
@@ -28,19 +28,28 @@ type Movie = {
 type TrackedMovie = {
   movie_id: number;
   status: 'watchlist' | 'watching' | 'watched';
+  rating: number | null;
   movies: Movie | null;
 };
 
-function MovieCard({ movie, compact = false, onPress }: { movie: Movie; compact?: boolean; onPress?: () => void }) {
+const CARD_WIDTH = 142;
+const COMPACT_CARD_WIDTH = 128;
+
+function MovieCard({
+  movie,
+  rating,
+  compact = false,
+  onPress,
+}: {
+  movie: Movie;
+  rating: number | null;
+  compact?: boolean;
+  onPress?: () => void;
+}) {
+  const width = compact ? COMPACT_CARD_WIDTH : CARD_WIDTH;
   return (
-    <Pressable onPress={onPress} style={[styles.movieCard, compact && styles.compactMovieCard]}>
-      <View style={styles.posterPlaceholder}>
-        {movie.poster_url ? (
-          <Image accessibilityIgnoresInvertColors source={{ uri: movie.poster_url }} style={styles.poster} resizeMode="cover" />
-        ) : (
-          <Text style={styles.posterMark}>{movie.title.charAt(0).toUpperCase()}</Text>
-        )}
-      </View>
+    <Pressable onPress={onPress} style={{ width }}>
+      <GoldenPoster posterUrl={movie.poster_url} title={movie.title} rating={rating} size={width} />
       <Text numberOfLines={2} style={styles.movieTitle}>
         {movie.title}
       </Text>
@@ -76,6 +85,8 @@ export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [watching, setWatching] = useState<TrackedMovie[]>([]);
+  // Nota del usuario por movie_id, para el marco dorado del catálogo.
+  const [ratings, setRatings] = useState<Record<number, number | null>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLabel, setAvatarLabel] = useState('');
   const [loading, setLoading] = useState(true);
@@ -107,7 +118,7 @@ export default function ExploreScreen() {
           const [{ data, error }, profile] = await Promise.all([
             supabase
               .from('user_movies')
-              .select('movie_id, status, movies(id, title, overview, poster_url)')
+              .select('movie_id, status, rating, movies(id, title, overview, poster_url)')
               .eq('user_id', userId),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
@@ -124,6 +135,7 @@ export default function ExploreScreen() {
           if (!error) {
             const tracked = (data ?? []) as unknown as TrackedMovie[];
             setWatching(tracked.filter((item) => item.status === 'watching'));
+            setRatings(Object.fromEntries(tracked.map((item) => [item.movie_id, item.rating])));
           }
         }
 
@@ -190,6 +202,7 @@ export default function ExploreScreen() {
                   <MovieCard
                     key={item.movie_id}
                     movie={item.movies}
+                    rating={item.rating}
                     onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
                   />
                 )
@@ -211,6 +224,7 @@ export default function ExploreScreen() {
               <MovieCard
                 key={movie.id}
                 movie={movie}
+                rating={ratings[movie.id] ?? null}
                 compact
                 onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
               />
@@ -252,11 +266,6 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#F4F4F5', fontSize: 21, fontWeight: '800' },
   sectionCount: { color: '#7D7382', fontSize: 12 },
   row: { gap: 12, paddingBottom: 28 },
-  movieCard: { width: 142 },
-  compactMovieCard: { width: 128 },
-  posterPlaceholder: { height: 178, borderRadius: 15, backgroundColor: '#21172A', borderWidth: 1, borderColor: '#432653', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  poster: { width: '100%', height: '100%' },
-  posterMark: { color: '#9F43D4', fontSize: 54, fontWeight: '900', opacity: 0.7 },
   movieTitle: { color: '#F4F4F5', fontSize: 14, lineHeight: 18, fontWeight: '700', marginTop: 9 },
   movieMeta: { color: '#81788A', fontSize: 11, marginTop: 4 },
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 18, marginBottom: 24 },

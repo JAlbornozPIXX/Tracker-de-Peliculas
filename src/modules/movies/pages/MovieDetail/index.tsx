@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GoldenPoster } from '@/components/golden-poster';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { MovieListsPicker } from '@/modules/lists/components/movie-lists-picker';
@@ -224,13 +225,9 @@ export default function MovieDetail() {
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
 
-        {movie.posterUrl ? (
-          <Image accessibilityIgnoresInvertColors source={{ uri: movie.posterUrl }} style={styles.poster} resizeMode="cover" />
-        ) : (
-          <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterMark}>{movie.title.charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
+        <View style={styles.posterWrap}>
+          <GoldenPoster posterUrl={movie.posterUrl} title={movie.title} rating={rating} size={180} />
+        </View>
         <Text style={styles.title}>{movie.title}</Text>
         {movie.overview && <Text style={styles.overview}>{movie.overview}</Text>}
         <View style={styles.metaRow}>
@@ -295,9 +292,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48, gap: 6 },
   backButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   backIcon: { color: '#F4F4F5', fontSize: 22, lineHeight: 22 },
-  poster: { width: 180, aspectRatio: 2 / 3, alignSelf: 'center', borderRadius: 18, backgroundColor: '#21172A', marginBottom: 14 },
-  posterPlaceholder: { height: 220, borderRadius: 18, backgroundColor: '#21172A', borderWidth: 1, borderColor: '#432653', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  posterMark: { color: '#9F43D4', fontSize: 64, fontWeight: '900', opacity: 0.7 },
+  posterWrap: { alignSelf: 'center', marginBottom: 14 },
   title: { color: '#F4F4F5', fontSize: 23, fontWeight: '800' },
   overview: { color: '#A1A1AA', fontSize: 14, lineHeight: 20, marginTop: 6 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 18, alignItems: 'center' },
