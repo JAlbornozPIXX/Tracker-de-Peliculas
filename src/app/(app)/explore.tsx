@@ -193,6 +193,18 @@ export default function ExploreScreen() {
           </Pressable>
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Ver tu Wrapped ${new Date().getFullYear()}`}
+          onPress={() => router.push('/wrapped')}
+          style={styles.wrappedLink}>
+          <View>
+            <Text style={styles.wrappedLinkTitle}>Tu Wrapped {new Date().getFullYear()}</Text>
+            <Text style={styles.wrappedLinkCopy}>Tu año en cine en una tarjeta para compartir</Text>
+          </View>
+          <Text style={styles.wrappedLinkArrow}>›</Text>
+        </Pressable>
+
         <SectionTitle title="Continuar viendo" count={watching.length} />
         {watching.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -259,6 +271,10 @@ const styles = StyleSheet.create({
   heroButton: { alignSelf: 'flex-start', marginTop: 18, backgroundColor: '#A83BDD', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   arrow: { color: '#FFFFFF', fontSize: 24, lineHeight: 18 },
+  wrappedLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: '#17151D', borderRadius: 16, borderWidth: 1, borderColor: '#4D1E61', paddingVertical: 14, paddingHorizontal: 16, marginBottom: 24 },
+  wrappedLinkTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '800' },
+  wrappedLinkCopy: { color: '#8F8795', fontSize: 12, marginTop: 3 },
+  wrappedLinkArrow: { color: '#D78CFF', fontSize: 26, lineHeight: 26 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', marginBottom: 22 },
   searchBarIcon: { color: '#D78CFF', fontSize: 18 },
   searchBarPlaceholder: { color: '#7D7382', fontSize: 14 },
