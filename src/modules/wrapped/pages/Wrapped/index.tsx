@@ -38,22 +38,21 @@ export default function Wrapped() {
   const cardRef = useRef<View>(null);
   const [summary, setSummary] = useState<WrappedSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
   const [sharing, setSharing] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!userId) return;
-      let active = true;
-      setLoadError(null);
-      getWrapped(userId, year)
-        .then((data) => active && setSummary(data))
-        .catch((err) => active && setLoadError(err instanceof Error ? err.message : 'Inténtalo de nuevo.'));
-      return () => {
-        active = false;
-      };
-    }, [userId, year, attempt])
-  );
+  const loadSummary = useCallback(() => {
+    if (!userId) return;
+    let active = true;
+    setLoadError(null);
+    getWrapped(userId, year)
+      .then((data) => active && setSummary(data))
+      .catch((err) => active && setLoadError(err instanceof Error ? err.message : 'Inténtalo de nuevo.'));
+    return () => {
+      active = false;
+    };
+  }, [userId, year]);
+
+  useFocusEffect(loadSummary);
 
   async function handleShare() {
     setSharing(true);
@@ -87,7 +86,7 @@ export default function Wrapped() {
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>No se pudo cargar tu Wrapped</Text>
             <Text style={styles.panelCopy}>{loadError}</Text>
-            <Pressable accessibilityRole="button" onPress={() => setAttempt((n) => n + 1)} style={styles.primaryButton}>
+            <Pressable accessibilityRole="button" onPress={() => loadSummary()} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Reintentar</Text>
             </Pressable>
           </View>
