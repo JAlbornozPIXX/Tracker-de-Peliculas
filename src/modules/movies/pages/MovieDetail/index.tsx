@@ -12,7 +12,9 @@ import { getUserMovie, setStatus, updateNotes, updateRating } from '@/modules/mo
 import { ReactionPicker } from '@/modules/movies/components/reaction-picker';
 import { StarRatingInput } from '@/modules/movies/components/star-rating-input';
 import { StatusPicker } from '@/modules/movies/components/status-picker';
+import { ViewsSection } from '@/modules/movies/components/views-section';
 import { StatusKey } from '@/modules/movies/constants/status';
+import { useMovieViews } from '@/modules/movies/hooks/use-movie-views';
 
 const NOTES_MAX = 2000;
 const NOTES_DEBOUNCE_MS = 900;
@@ -55,6 +57,7 @@ export default function MovieDetail() {
 
   // null mientras un título de TheMovieDB todavía no existe en movies.
   const internalId = tmdbMediaType ? tmdbInternalId : movieId;
+  const { views, registerView, registerAutoViewToday, removeView } = useMovieViews(userId, internalId);
 
   useEffect(() => {
     if (!userId || Number.isNaN(movieId)) return;
@@ -142,9 +145,20 @@ export default function MovieDetail() {
       }
       const { error } = await setStatus(userId, id, next);
       if (error) throw error;
+      if (next === 'watched') await registerFinishView(id);
     } catch (err) {
       setStatusState(previous);
       Alert.alert('No se pudo actualizar el estado', err instanceof Error ? err.message : '');
+    }
+  }
+
+  // Pasar a Terminado registra la vista de hoy. Si falla, el estado ya quedó
+  // guardado: solo se avisa y la vista se puede registrar a mano.
+  async function registerFinishView(id: number) {
+    try {
+      await registerAutoViewToday(id);
+    } catch (err) {
+      Alert.alert('No se pudo registrar la vista', err instanceof Error ? err.message : '');
     }
   }
 
@@ -165,6 +179,7 @@ export default function MovieDetail() {
         setStatusState('watched');
         const { error } = await setStatus(userId, id, 'watched', next);
         if (error) throw error;
+        await registerFinishView(id);
       } else {
         const { error } = await updateRating(userId, internalId!, next);
         if (error) throw error;
@@ -180,6 +195,10 @@ export default function MovieDetail() {
     if (internalId != null) return internalId;
     if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
     return ensureMovieFromTmdb(tmdbDetails);
+  }
+
+  async function handleAddView(viewedOn: string) {
+    await registerView(await ensureInternalMovieId(), viewedOn);
   }
 
   if (loading) {
@@ -226,6 +245,9 @@ export default function MovieDetail() {
 
         <Text style={styles.sectionLabel}>Estado</Text>
         <StatusPicker value={status} onChange={handleStatusChange} />
+
+        <Text style={styles.sectionLabel}>Vistas</Text>
+        <ViewsSection views={views} onAdd={handleAddView} onDelete={removeView} />
 
         <Text style={styles.sectionLabel}>Calificación</Text>
         <View style={styles.ratingRow}>
