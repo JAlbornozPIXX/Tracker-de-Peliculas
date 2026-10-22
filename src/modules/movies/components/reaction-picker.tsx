@@ -4,17 +4,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import {
-  addReactionToMovie,
   createReaction,
   getReactionIdsForMovie,
   getReactions,
   Reaction,
   REACTION_EMOJI_MAX,
   REACTION_NAME_MAX,
-  removeReactionFromMovie,
 } from '@/modules/movies/api/reactions';
+import { saveMovieReaction, syncQueue, withPendingReactions } from '@/modules/sync/queue';
 
 const PREVIEW_COUNT = 3;
+
+// Los marcados en el servidor más los cambios que siguen pendientes en el teléfono.
+async function loadSelectedIds(userId: string, movieId: number) {
+  return withPendingReactions(userId, movieId, await getReactionIdsForMovie(userId, movieId));
+}
 
 /**
  * Botón que muestra los calificadores marcados y abre un Modal para activar,
@@ -48,7 +52,7 @@ export function ReactionPicker({
   useEffect(() => {
     if (!userId) return;
     let active = true;
-    Promise.all([getReactions(), movieId != null ? getReactionIdsForMovie(userId, movieId) : []])
+    Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []])
       .then(([allReactions, reactionIds]) => {
         if (!active) return;
         setReactions(allReactions);
@@ -61,6 +65,17 @@ export function ReactionPicker({
     };
   }, [userId, movieId]);
 
+  // Un calificador pendiente que el servidor rechazó: se vuelve a lo guardado.
+  useEffect(() => {
+    if (!userId || movieId == null) return;
+    return syncQueue.subscribeDiscarded((discardedId) => {
+      if (discardedId !== movieId) return;
+      loadSelectedIds(userId, movieId)
+        .then(setSelectedIds)
+        .catch(() => {});
+    });
+  }, [userId, movieId]);
+
   async function handleToggle(reactionId: number) {
     if (!userId) return;
     const wasSelected = selectedIds.includes(reactionId);
@@ -68,10 +83,8 @@ export function ReactionPicker({
 
     try {
       const resolvedMovieId = movieId ?? (await ensureMovieId());
-      const { error } = wasSelected
-        ? await removeReactionFromMovie(userId, resolvedMovieId, reactionId)
-        : await addReactionToMovie(userId, resolvedMovieId, reactionId);
-      if (error) throw error;
+      // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
+      await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, reactionId] : current.filter((id) => id !== reactionId)));
       Alert.alert(

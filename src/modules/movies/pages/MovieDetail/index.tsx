@@ -9,13 +9,15 @@ import { useAuth } from '@/modules/auth/context/AuthContext';
 import { MovieListsPicker } from '@/modules/lists/components/movie-lists-picker';
 import { ensureMovieFromTmdb, findMovieIdByTmdb, getMovieById, MovieRow } from '@/modules/movies/api/movies';
 import { getMovieDetails, MovieDetails } from '@/modules/movies/api/tmdb';
-import { getUserMovie, setStatus, updateNotes, updateRating } from '@/modules/movies/api/user-movies';
+import { getUserMovie } from '@/modules/movies/api/user-movies';
 import { ReactionPicker } from '@/modules/movies/components/reaction-picker';
 import { StarRatingInput } from '@/modules/movies/components/star-rating-input';
 import { StatusPicker } from '@/modules/movies/components/status-picker';
 import { ViewsSection } from '@/modules/movies/components/views-section';
 import { StatusKey } from '@/modules/movies/constants/status';
 import { useMovieViews } from '@/modules/movies/hooks/use-movie-views';
+import { usePendingSync } from '@/modules/sync/hooks/use-pending-sync';
+import { saveUserMovie, syncQueue, withPendingUserMovie } from '@/modules/sync/queue';
 
 const NOTES_MAX = 2000;
 const NOTES_DEBOUNCE_MS = 900;
@@ -59,6 +61,7 @@ export default function MovieDetail() {
   // null mientras un título de TheMovieDB todavía no existe en movies.
   const internalId = tmdbMediaType ? tmdbInternalId : movieId;
   const { views, registerView, registerAutoViewToday, removeView } = useMovieViews(userId, internalId);
+  const pendingSync = usePendingSync(internalId);
 
   useEffect(() => {
     if (!userId || Number.isNaN(movieId)) return;
@@ -71,7 +74,8 @@ export default function MovieDetail() {
         findMovieIdByTmdb(movieId, tmdbMediaType).catch(() => null),
       ])
         .then(async ([details, foundId]) => {
-          const tracking = foundId != null ? await getUserMovie(userId, foundId) : null;
+          const tracking =
+            foundId != null ? await withPendingUserMovie(userId, foundId, await getUserMovie(userId, foundId)) : null;
           if (controller.signal.aborted) return;
           setMovie(details);
           setTmdbDetails(details);
@@ -92,7 +96,10 @@ export default function MovieDetail() {
     }
 
     let active = true;
-    Promise.all([getMovieById(movieId), getUserMovie(userId, movieId)])
+    Promise.all([
+      getMovieById(movieId),
+      getUserMovie(userId, movieId).then((row) => withPendingUserMovie(userId, movieId, row)),
+    ])
       .then(([movieData, tracking]) => {
         if (!active) return;
         setMovie(movieData && toMovieView(movieData));
@@ -108,6 +115,25 @@ export default function MovieDetail() {
     };
   }, [userId, movieId, tmdbMediaType]);
 
+  // Un cambio pendiente se descartó porque el servidor tenía uno más reciente
+  // (o lo rechazó): se vuelve a mostrar lo que hay en el servidor.
+  useEffect(() => {
+    if (!userId || internalId == null) return;
+    return syncQueue.subscribeDiscarded((discardedId) => {
+      if (discardedId !== internalId) return;
+      getUserMovie(userId, internalId)
+        .then((row) => withPendingUserMovie(userId, internalId, row))
+        .then((tracking) => {
+          setStatusState(tracking?.status ?? null);
+          setRating(tracking?.rating ?? null);
+          setNotes(tracking?.notes ?? '');
+        })
+        .catch(() => {
+          // Sin red se queda lo que se ve; la próxima apertura carga del servidor.
+        });
+    });
+  }, [userId, internalId]);
+
   useEffect(() => {
     latestNotes.current = notes;
   }, [notes]);
@@ -116,10 +142,13 @@ export default function MovieDetail() {
   useEffect(() => {
     if (!hasLoaded.current || !userId || internalId == null || status == null) return;
     setNoteSaveState('saving');
-    updateNotes(userId, internalId, debouncedNotes || null).then(({ error }) => {
-      setNoteSaveState(error ? 'idle' : 'saved');
-      if (error) Alert.alert('No se pudo guardar la nota', error.message);
-    });
+    saveUserMovie(userId, internalId, { notes: debouncedNotes || null })
+      // Si quedó pendiente lo muestra el indicador de sincronización.
+      .then((result) => setNoteSaveState(result === 'saved' ? 'saved' : 'idle'))
+      .catch((err) => {
+        setNoteSaveState('idle');
+        Alert.alert('No se pudo guardar la nota', err instanceof Error ? err.message : '');
+      });
   }, [debouncedNotes, userId, internalId, status]);
 
   // Guarda cualquier texto pendiente de inmediato al salir, para que navegar
@@ -128,7 +157,8 @@ export default function MovieDetail() {
   useEffect(() => {
     return () => {
       if (userId && internalId != null && status != null) {
-        updateNotes(userId, internalId, latestNotes.current || null);
+        // Queda en la cola del teléfono aunque no haya red.
+        saveUserMovie(userId, internalId, { notes: latestNotes.current || null }).catch(() => {});
       }
     };
   }, [userId, internalId, status]);
@@ -144,8 +174,8 @@ export default function MovieDetail() {
         id = await ensureMovieFromTmdb(tmdbDetails);
         setTmdbInternalId(id);
       }
-      const { error } = await setStatus(userId, id, next);
-      if (error) throw error;
+      // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
+      await saveUserMovie(userId, id, { status: next });
       if (next === 'watched') await registerFinishView(id);
     } catch (err) {
       setStatusState(previous);
@@ -178,12 +208,10 @@ export default function MovieDetail() {
           setTmdbInternalId(id);
         }
         setStatusState('watched');
-        const { error } = await setStatus(userId, id, 'watched', next);
-        if (error) throw error;
+        await saveUserMovie(userId, id, { status: 'watched', rating: next });
         await registerFinishView(id);
       } else {
-        const { error } = await updateRating(userId, internalId!, next);
-        if (error) throw error;
+        await saveUserMovie(userId, internalId!, { rating: next });
       }
     } catch (err) {
       setRating(previousRating);
@@ -239,6 +267,13 @@ export default function MovieDetail() {
           {movie.year && <Text style={styles.durationText}>{movie.year}</Text>}
           {movie.durationMinutes != null && <Text style={styles.durationText}>{movie.durationMinutes} min</Text>}
         </View>
+
+        {pendingSync && (
+          <View accessibilityLiveRegion="polite" style={styles.pendingPill}>
+            <View style={styles.pendingDot} />
+            <Text style={styles.pendingText}>Pendiente de sincronizar</Text>
+          </View>
+        )}
 
         <Text style={styles.sectionLabel}>Estado</Text>
         <StatusPicker value={status} onChange={handleStatusChange} />
@@ -299,6 +334,9 @@ const styles = StyleSheet.create({
   genrePill: { backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', borderRadius: 10, paddingVertical: 4, paddingHorizontal: 10 },
   genrePillText: { color: '#D78CFF', fontSize: 12, fontWeight: '700' },
   durationText: { color: '#81788A', fontSize: 12 },
+  pendingPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(251,191,36,0.1)', borderWidth: 1, borderColor: '#A16207' },
+  pendingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FBBF24' },
+  pendingText: { color: '#FCD34D', fontSize: 12, fontWeight: '700' },
   sectionLabel: { color: '#F4F4F5', fontSize: 16, fontWeight: '800', marginTop: 18, marginBottom: 10 },
   ratingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10 },
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 16 },

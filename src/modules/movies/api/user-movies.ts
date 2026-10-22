@@ -19,38 +19,53 @@ export async function getUserMovie(userId: string, movieId: number): Promise<Use
   return data;
 }
 
-// La única escritura que puede crear una fila nueva — ver nota en MovieDetail
-// sobre por qué rating/notes nunca deben ser la primera escritura para un
-// (user_id, movie_id) que todavía no existe (status es NOT NULL sin default).
-export function setStatus(userId: string, movieId: number, status: StatusKey, rating?: number | null) {
-  return supabase
+export type UserMovieFields = {
+  status?: StatusKey;
+  rating?: number | null;
+  notes?: string | null;
+};
+
+// Las escrituras pasan por la cola de src/modules/sync: así un cambio sin red
+// queda guardado en el teléfono y se sube después.
+
+/**
+ * Aplica los campos solo si el servidor no tiene un cambio más reciente que
+ * changedAt (gana el más reciente según updated_at). applied es false si la
+ * fila no existe o si su updated_at es posterior.
+ */
+export async function updateUserMovieIfOlder(
+  userId: string,
+  movieId: number,
+  fields: UserMovieFields,
+  changedAt: string
+) {
+  const { data, error, status } = await supabase
     .from('user_movies')
-    .upsert(
-      {
-        user_id: userId,
-        movie_id: movieId,
-        status,
-        ...(rating !== undefined && { rating }),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,movie_id' }
-    );
+    .update({ ...fields, updated_at: changedAt })
+    .eq('user_id', userId)
+    .eq('movie_id', movieId)
+    .lte('updated_at', changedAt)
+    .select('movie_id');
+  return { error, status, applied: (data?.length ?? 0) > 0 };
 }
 
-export function updateRating(userId: string, movieId: number, rating: number | null) {
-  return supabase
+export async function userMovieExists(userId: string, movieId: number) {
+  const { data, error, status } = await supabase
     .from('user_movies')
-    .update({ rating, updated_at: new Date().toISOString() })
+    .select('movie_id')
     .eq('user_id', userId)
-    .eq('movie_id', movieId);
+    .eq('movie_id', movieId)
+    .maybeSingle();
+  return { error, status, exists: data != null };
 }
 
-export function updateNotes(userId: string, movieId: number, notes: string | null) {
-  return supabase
+// La única escritura que crea la fila: necesita status, que es NOT NULL sin
+// default. Por eso estrellas o nota nunca son la primera escritura.
+export async function insertUserMovie(userId: string, movieId: number, fields: UserMovieFields, changedAt: string) {
+  const { error, status } = await supabase
     .from('user_movies')
-    .update({ notes, updated_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('movie_id', movieId);
+    .insert({ user_id: userId, movie_id: movieId, ...fields, updated_at: changedAt });
+  return { error, status };
 }
 
 export async function getDisqualifiedMovieIds(userId: string): Promise<number[]> {
