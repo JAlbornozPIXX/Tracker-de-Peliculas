@@ -4,7 +4,7 @@
 select extract(month from v.viewed_on)::int as month, count(*) as views
 from public.movie_views v
 join auth.users u on u.id = v.user_id
-where u.email = 'tu-correo@ejemplo.com'
+where u.email = 'rhezm1015@gmail.com'
   and v.viewed_on between '2026-01-01' and '2026-12-31'
 group by 1
 order by 1;
@@ -13,7 +13,7 @@ order by 1;
 select v.viewed_on as date, count(*) as views
 from public.movie_views v
 join auth.users u on u.id = v.user_id
-where u.email = 'tu-correo@ejemplo.com'
+where u.email = 'rhezm1015@gmail.com'
   and v.viewed_on between '2026-07-01' and '2026-07-31'
 group by 1
 order by 1;
@@ -23,14 +23,14 @@ select coalesce(sum(coalesce(m.duration_minutes, 0)), 0) as minutes, count(*) as
 from public.movie_views v
 join public.movies m on m.id = v.movie_id
 join auth.users u on u.id = v.user_id
-where u.email = 'tu-correo@ejemplo.com'
+where u.email = 'rhezm1015@gmail.com'
   and v.viewed_on between '2026-01-01' and '2026-12-31';
 
 --busiestMonth(userId, 2026): en empate, el mes más temprano.
 select extract(month from v.viewed_on)::int as month, count(*) as views
 from public.movie_views v
 join auth.users u on u.id = v.user_id
-where u.email = 'tu-correo@ejemplo.com'
+where u.email = 'rhezm1015@gmail.com'
   and v.viewed_on between '2026-01-01' and '2026-12-31'
 group by 1
 order by views desc, month
@@ -43,7 +43,7 @@ with rated as (
   join public.movies m on m.id = v.movie_id
   join public.user_movies um on um.movie_id = v.movie_id and um.user_id = v.user_id
   join auth.users u on u.id = v.user_id
-  where u.email = 'tu-correo@ejemplo.com'
+  where u.email = 'rhezm1015@gmail.com'
     and v.viewed_on between '2026-01-01' and '2026-12-31'
     and um.rating is not null
   group by m.id, m.title, um.rating
@@ -56,5 +56,5 @@ union all
 select count(*) as views_noviembre
 from public.movie_views v
 join auth.users u on u.id = v.user_id
-where u.email = 'tu-correo@ejemplo.com'
+where u.email = 'rhezm1015@gmail.com'
   and v.viewed_on between '2026-11-01' and '2026-11-30';
