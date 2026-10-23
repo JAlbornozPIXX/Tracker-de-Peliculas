@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChipOption, Chips } from '@/components/chips';
 import { EmptyNotice } from '@/components/empty-notice';
 import { GoldenPoster } from '@/components/golden-poster';
+import { HomeBackButton } from '@/components/home-back-button';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { getLists, ListSummary } from '@/modules/lists/api/lists';
 import { getReactions, Reaction } from '@/modules/movies/api/reactions';
@@ -141,9 +142,7 @@ export default function Ranking() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Volver" onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backIcon}>‹</Text>
-        </Pressable>
+        <HomeBackButton />
         <View style={styles.headerText}>
           <Text style={styles.title}>Ranking</Text>
           <Text style={styles.count}>{results.length === 1 ? '1 película' : `${results.length} películas`}</Text>
@@ -276,8 +275,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0B0B0F' },
   loadingScreen: { flex: 1, backgroundColor: '#0B0B0F', justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14 },
-  backButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: '#F4F4F5', fontSize: 22, lineHeight: 22 },
   headerText: { flex: 1 },
   title: { color: '#F4F4F5', fontSize: 21, fontWeight: '800' },
   count: { color: '#7D7382', fontSize: 12, marginTop: 2 },

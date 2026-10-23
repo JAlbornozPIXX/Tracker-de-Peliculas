@@ -450,3 +450,58 @@ to authenticated
 using ((select auth.uid()) = user_id);
 
 grant select, insert, update, delete on public.challenges to authenticated;
+
+-- Pila de la vergüenza: status_changed_at es cuándo se puso el estado actual.
+-- No se usa updated_at porque cambia también al editar la nota o las estrellas.
+alter table public.user_movies add column if not exists status_changed_at timestamptz;
+-- Filas anteriores: no se sabe cuándo cambió el estado; updated_at es lo más cercano.
+update public.user_movies set status_changed_at = updated_at where status_changed_at is null;
+alter table public.user_movies alter column status_changed_at set default now();
+alter table public.user_movies alter column status_changed_at set not null;
+
+-- Solo un cambio de estado mueve la fecha. Se toma updated_at porque las
+-- escrituras hechas sin red llegan después con la hora real del cambio.
+create or replace function public.set_user_movie_status_changed_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' or new.status is distinct from old.status then
+    new.status_changed_at := coalesce(new.updated_at, now());
+  else
+    new.status_changed_at := old.status_changed_at;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists user_movies_set_status_changed_at on public.user_movies;
+create trigger user_movies_set_status_changed_at
+before insert or update on public.user_movies
+for each row execute function public.set_user_movie_status_changed_at();
+
+create index if not exists user_movies_watchlist_idx
+on public.user_movies (user_id, status_changed_at)
+where status = 'watchlist';
+
+-- Repaso de la pila: "Mantener" fija status_changed_at a hoy y "Deshacer" lo
+-- devuelve a su valor anterior, así que el trigger ahora respeta un valor
+-- explícito. Un cambio de estado sigue moviendo la fecha, y editar nota o
+-- estrellas no la toca porque esas escrituras no envían la columna.
+alter table public.user_movies alter column status_changed_at drop default;
+
+create or replace function public.set_user_movie_status_changed_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.status_changed_at := coalesce(new.status_changed_at, new.updated_at, now());
+  elsif new.status is distinct from old.status then
+    new.status_changed_at := coalesce(new.updated_at, now());
+  end if;
+  return new;
+end;
+$$;

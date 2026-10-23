@@ -1,4 +1,4 @@
-import type { StatusKey } from '@/modules/movies/constants/status';
+import { UNSEEN_EXCLUDED_STATUSES, type StatusKey } from '@/modules/movies/constants/status';
 import { supabase } from '@/utils/supabase';
 
 export type UserMovieRow = {
@@ -73,7 +73,7 @@ export async function getDisqualifiedMovieIds(userId: string): Promise<number[]>
     .from('user_movies')
     .select('movie_id')
     .eq('user_id', userId)
-    .in('status', ['watched', 'abandoned']);
+    .in('status', UNSEEN_EXCLUDED_STATUSES);
 
   if (error) throw error;
   return (data ?? []).map((row) => row.movie_id);
