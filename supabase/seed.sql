@@ -1,7 +1,3 @@
--- Datos sintéticos para probar Estadísticas, Wrapped y Retos.
--- Ejecutar en el SQL Editor de Supabase después de schema.sql, cambiando el correo por el de una cuenta ya registrada.
--- Borra y vuelve a crear todo lo que tenga el seed.
---
 -- Determinista (sin random()) para que supabase/seed-check.sql de siempre lo mismo:
 --  * 50 títulos: cada 7.º es serie (45 min por episodio), cada 10.º no tiene duración y el resto dura entre 80 y 149 min.
 --  * 200 vistas entre el 1 de enero y el 21 de octubre de 2026, más 30 extra en julio (el mes de mayor consumo) y 10 en diciembre de 2025 (no deben contar en 2026).
