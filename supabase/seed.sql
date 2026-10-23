@@ -4,12 +4,9 @@
 --  * Nota en cuartos de estrella para cada título, salvo cada 6.º.
 do $$
 declare
-  seed_user uuid := (select id from auth.users where email = 'tu-correo@ejemplo.com');
+  seed_user uuid := (select id from auth.users where email = 'rhezm1015@gmail.com');
 begin
-  if seed_user is null then
-    raise exception 'Cambia el correo de seed.sql por el de una cuenta registrada.';
-  end if;
-
+  
   delete from public.movies where title like '[seed] %';
 
   insert into public.movies (title, genre, duration_minutes, media_type, release_date)
