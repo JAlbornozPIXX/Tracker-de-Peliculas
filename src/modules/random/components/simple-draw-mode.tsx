@@ -90,7 +90,7 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
               onAction={() => router.push('/lists')}
             />
           ) : (
-              <EmptyNotice title="Sin coincidencias" copy={`Ninguna película de tu catálogo es ${genresLabel} a la vez.`} />
+            <EmptyNotice title="Sin coincidencias" copy={`Ninguna película de tu catálogo es ${genresLabel} a la vez.`} />
           )
         }
       />
