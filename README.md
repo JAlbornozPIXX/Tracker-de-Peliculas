@@ -7,7 +7,7 @@ Aplicacion Expo/React Native para seguir peliculas. La autenticacion usa Supabas
 1. Crea un proyecto en [Supabase](https://supabase.com/dashboard).
 2. Copia `.env.example` a `.env`.
 3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` desde el dialogo **Connect** del proyecto, y `EXPO_PUBLIC_TMDB_API_KEY` con tu clave de la API de [TheMovieDB](https://www.themoviedb.org/settings/api).
-4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`. El script se puede ejecutar mas de una vez: vuelve a correrlo cada vez que cambie.
+4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`. El script se puede ejecutar mas de una vez: vuelve a correrlo cada vez que cambie, y hazlo antes de abrir la version nueva de la app. Mientras falten columnas, los cambios quedan pendientes en el telefono y algunas pantallas muestran un error.
 5. En **Authentication > URL Configuration**, configura la URL de la aplicacion para los enlaces de correo.
 
 La clave publica puede estar en la aplicacion. No uses nunca la clave `service_role` en Expo ni la subas al repositorio.
@@ -29,9 +29,14 @@ Para abrir en navegador:
 npm run web
 ```
 
-La app usa modulos nativos (por ejemplo `expo-sharing` y `react-native-view-shot` para compartir el Wrapped). Si cambian las dependencias nativas, vuelve a compilar la app con `npm run android` o `npm run ios`; Expo Go no basta.
+Con [Expo Go](https://expo.dev/go) no hace falta compilar: los modulos nativos que usa la app (por ejemplo `expo-sharing` y `react-native-view-shot` para compartir el Wrapped) vienen incluidos. Si usas una compilacion propia (`npm run android` o `npm run ios`, que generan las carpetas `android/` e `ios/`), vuelve a compilarla cada vez que cambien las dependencias nativas:
 
-Antes de abrir un pull request, comprueba tipos, pruebas y lint (la CI de GitHub ejecuta los dos primeros):
+```bash
+npx expo prebuild --clean
+npm run android
+```
+
+Antes de abrir un pull request, comprueba tipos, pruebas y lint (la CI de GitHub ejecuta los tres):
 
 ```bash
 npx tsc --noEmit
