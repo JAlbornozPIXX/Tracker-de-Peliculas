@@ -1,16 +1,20 @@
 # Cine-Teca
 
-Aplicacion Expo/React Native para seguir peliculas. La autenticacion usa Supabase. hola
+Aplicacion Expo/React Native para seguir peliculas. La autenticacion usa Supabase.
 
 ## Configurar Supabase
 
 1. Crea un proyecto en [Supabase](https://supabase.com/dashboard).
 2. Copia `.env.example` a `.env`.
-3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` desde el dialogo **Connect** del proyecto.
-4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`.
+3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` desde el dialogo **Connect** del proyecto, y `EXPO_PUBLIC_TMDB_API_KEY` con tu clave de la API de [TheMovieDB](https://www.themoviedb.org/settings/api).
+4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`. El script se puede ejecutar mas de una vez: vuelve a correrlo cada vez que cambie.
 5. En **Authentication > URL Configuration**, configura la URL de la aplicacion para los enlaces de correo.
 
 La clave publica puede estar en la aplicacion. No uses nunca la clave `service_role` en Expo ni la subas al repositorio.
+
+### Datos de prueba (opcional)
+
+Para probar Wrapped y Retos con datos sinteticos, cambia `seed_email` al inicio de `supabase/seed.sql` por el correo de una cuenta que ya exista en **Authentication > Users** y ejecuta el archivo en el **SQL Editor**. Crea 50 titulos `[seed]` y sus vistas de 2026 para esa cuenta; al ejecutarlo de nuevo, los reemplaza. `supabase/seed-check.sql` muestra los conteos que la app deberia mostrar.
 
 ## Ejecutar
 
@@ -25,10 +29,14 @@ Para abrir en navegador:
 npm run web
 ```
 
-Para comprobar TypeScript:
+La app usa modulos nativos (por ejemplo `expo-sharing` y `react-native-view-shot` para compartir el Wrapped). Si cambian las dependencias nativas, vuelve a compilar la app con `npm run android` o `npm run ios`; Expo Go no basta.
+
+Antes de abrir un pull request, comprueba tipos, pruebas y lint (la CI de GitHub ejecuta los dos primeros):
 
 ```bash
 npx tsc --noEmit
+npm test
+npm run lint
 ```
 
 La pantalla de inicio de sesion ya usa `supabase.auth.signInWithPassword`, el registro usa `signUp` y la recuperacion usa `resetPasswordForEmail`.
@@ -64,8 +72,6 @@ When you're ready, run:
 
 ```bash
 npm run reset-project
-
-
 ```
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
