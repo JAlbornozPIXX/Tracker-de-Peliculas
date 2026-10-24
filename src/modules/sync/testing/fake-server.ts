@@ -7,11 +7,11 @@ type ServerRow = UserMovieRow & { updatedAt: string };
 const OFFLINE = { status: 0, error: { message: 'TypeError: Network request failed', details: '', hint: '', code: '' } };
 const OK = { status: 200, error: null };
 
-/** Supabase en memoria con un interruptor de "modo avión". */
+/** Supabase en memoria con un interruptor de "modo avión" y otro de sesión. */
 export function createFakeServer() {
   const rows = new Map<number, ServerRow>();
   const reactions = new Set<string>();
-  const state = { online: true, calls: 0 };
+  const state = { online: true, signedIn: true, calls: 0 };
 
   function offline<T extends object>(extra: T): (RemoteResult & T) | null {
     state.calls += 1;
@@ -19,6 +19,10 @@ export function createFakeServer() {
   }
 
   const remote: SyncRemote = {
+    // Como getSession, no cuenta como petición: lee la sesión guardada.
+    async hasSession() {
+      return state.signedIn;
+    },
     async updateUserMovieIfOlder(_userId, movieId, fields: UserMovieFields, changedAt) {
       const down = offline({ applied: false });
       if (down) return down;

@@ -12,6 +12,17 @@ import { moveListMovie, sortListMovies } from '@/modules/lists/utils/list-order'
 import { getMovieDetails } from '@/modules/movies/api/tmdb';
 import { getWatchedMovieIds } from '@/modules/movies/api/user-movies';
 import { MovieResultCard } from '@/modules/movies/components/movie-result-card';
+import { withPendingWatchedIds } from '@/modules/sync/queue';
+
+// Terminadas según el servidor más los estados que aún no se suben (sin red o
+// recién marcados en la ficha). null si no se pudieron leer.
+async function loadWatchedIds(userId: string, movieIds: number[]): Promise<Set<number> | null> {
+  try {
+    return await withPendingWatchedIds(userId, movieIds, await getWatchedMovieIds(userId, movieIds));
+  } catch {
+    return null;
+  }
+}
 
 export default function ListDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -66,11 +77,13 @@ export default function ListDetail() {
       let active = true;
       getListWithMovies(listId)
         .then(async (data) => {
-          const watched = data ? await getWatchedMovieIds(userId, data.movies.map((movie) => movie.id)) : new Set<number>();
           if (!active) return;
           setList(data);
-          setWatchedIds(watched);
-          if (data) fillMissingReleaseDates(data.movies, () => active);
+          if (!data) return;
+          fillMissingReleaseDates(data.movies, () => active);
+          // La barra es secundaria: si falla, la lista se muestra igual.
+          const watched = await loadWatchedIds(userId, data.movies.map((movie) => movie.id));
+          if (active && watched) setWatchedIds(watched);
         })
         .catch((err) => Alert.alert('No se pudo cargar la lista', err instanceof Error ? err.message : ''))
         .finally(() => active && setLoading(false));
@@ -95,6 +108,15 @@ export default function ListDetail() {
     } catch (err) {
       setList((current) => current && { ...current, movies: previous });
       Alert.alert('No se pudo cambiar el orden', err instanceof Error ? err.message : '');
+      // Cada posición se guarda por separado: si alguna alcanzó a guardarse,
+      // el orden real es el del servidor.
+      getListWithMovies(list.id)
+        .then((data) => {
+          if (!data) return;
+          setList((current) => current && { ...current, movies: data.movies });
+          fillMissingReleaseDates(data.movies, () => true);
+        })
+        .catch(() => {});
     } finally {
       setSavingOrder(false);
     }

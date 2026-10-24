@@ -74,6 +74,10 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
     await ready;
     const forUser = userId;
     if (!forUser) return;
+    // Sin sesión válida (token vencido que no se pudo renovar) se espera al
+    // próximo flush en vez de subir como anónimo.
+    const signedIn = await remote.hasSession(forUser).catch(() => false);
+    if (!signedIn || userId !== forUser) return;
 
     for (const write of [...queue]) {
       let outcome: ApplyOutcome;

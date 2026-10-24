@@ -5,7 +5,7 @@ import { Alert, Text, View } from 'react-native';
 import { ChipOption, Chips, ToggleChips } from '@/components/chips';
 import { EmptyNotice } from '@/components/empty-notice';
 import { getLists, ListSummary } from '@/modules/lists/api/lists';
-import { getAllMovies, type MovieRow } from '@/modules/movies/api/movies';
+import { getCatalogMovies, type MovieRow } from '@/modules/movies/api/movies';
 import { getGenreDrawCandidates, getListDrawCandidates } from '@/modules/random/api/random';
 import { DrawResult, drawStyles, PrimaryButton } from '@/modules/random/components/draw-result';
 import { useDraw } from '@/modules/random/hooks/use-draw';
@@ -40,7 +40,7 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([getLists(userId), getAllMovies()])
+      Promise.all([getLists(userId), getCatalogMovies(userId)])
         .then(([listData, catalogData]) => {
           if (!active) return;
           setLists(listData);
@@ -69,7 +69,7 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
     if (source === 'list' && listId != null) {
       draw.draw(() => getListDrawCandidates(listId), 'No se pudo hacer el sorteo', resetSeen);
     } else if (source === 'genres') {
-      draw.draw(() => getGenreDrawCandidates(selectedGenres), 'No se pudo hacer el sorteo', resetSeen);
+      draw.draw(() => getGenreDrawCandidates(userId, selectedGenres), 'No se pudo hacer el sorteo', resetSeen);
     }
   }
 
@@ -90,7 +90,7 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
               onAction={() => router.push('/lists')}
             />
           ) : (
-            <EmptyNotice title="Sin coincidencias" copy={`Ninguna película del catálogo es ${genresLabel} a la vez.`} />
+            <EmptyNotice title="Sin coincidencias" copy={`Ninguna película de tu catálogo es ${genresLabel} a la vez.`} />
           )
         }
       />
@@ -137,15 +137,15 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
               />
               {selectedGenres.length > 0 && (
                 <Text style={drawStyles.hint}>
-                  {countLabel(genreMatches)} del catálogo
+                  {countLabel(genreMatches)} de tu catálogo
                   {selectedGenres.length > 1 ? ` son ${genresLabel} a la vez` : ` son ${genresLabel}`}.
                 </Text>
               )}
             </>
           ) : (
             <EmptyNotice
-              title="El catálogo está vacío"
-              copy="Busca películas para agregarlas al catálogo y poder sortear por género."
+              title="Tu catálogo está vacío"
+              copy="Busca películas y dales un estado o agrégalas a una lista para poder sortear por género."
               actionLabel="Buscar películas"
               onAction={() => router.push('/search')}
             />

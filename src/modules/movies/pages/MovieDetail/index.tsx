@@ -57,6 +57,10 @@ export default function MovieDetail() {
   const [noteSaveState, setNoteSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const hasLoaded = useRef(false);
   const latestNotes = useRef(notes);
+  // Última nota que ya tienen el servidor o la cola. Solo se escribe cuando el
+  // texto cambia: abrir la ficha no debe guardar nada ni mover updated_at, que
+  // decide qué cambio gana al sincronizar.
+  const savedNotes = useRef<string | null>(null);
 
   // null mientras un título de TheMovieDB todavía no existe en movies.
   const internalId = tmdbMediaType ? tmdbInternalId : movieId;
@@ -82,6 +86,7 @@ export default function MovieDetail() {
           setTmdbInternalId(foundId);
           setStatusState(tracking?.status ?? null);
           setRating(tracking?.rating ?? null);
+          savedNotes.current = tracking?.notes ?? null;
           setNotes(tracking?.notes ?? '');
           hasLoaded.current = true;
         })
@@ -105,6 +110,7 @@ export default function MovieDetail() {
         setMovie(movieData && toMovieView(movieData));
         setStatusState(tracking?.status ?? null);
         setRating(tracking?.rating ?? null);
+        savedNotes.current = tracking?.notes ?? null;
         setNotes(tracking?.notes ?? '');
         hasLoaded.current = true;
       })
@@ -126,6 +132,7 @@ export default function MovieDetail() {
         .then((tracking) => {
           setStatusState(tracking?.status ?? null);
           setRating(tracking?.rating ?? null);
+          savedNotes.current = tracking?.notes ?? null;
           setNotes(tracking?.notes ?? '');
         })
         .catch(() => {
@@ -141,25 +148,33 @@ export default function MovieDetail() {
   const debouncedNotes = useDebouncedValue(notes, NOTES_DEBOUNCE_MS);
   useEffect(() => {
     if (!hasLoaded.current || !userId || internalId == null || status == null) return;
+    const next = debouncedNotes || null;
+    // El debounce todavía no alcanza al texto, o no hay nada nuevo que guardar.
+    if (debouncedNotes !== notes || next === savedNotes.current) return;
+    const previous = savedNotes.current;
+    savedNotes.current = next;
     setNoteSaveState('saving');
-    saveUserMovie(userId, internalId, { notes: debouncedNotes || null })
+    saveUserMovie(userId, internalId, { notes: next })
       // Si quedó pendiente lo muestra el indicador de sincronización.
       .then((result) => setNoteSaveState(result === 'saved' ? 'saved' : 'idle'))
       .catch((err) => {
+        if (savedNotes.current === next) savedNotes.current = previous;
         setNoteSaveState('idle');
         Alert.alert('No se pudo guardar la nota', err instanceof Error ? err.message : '');
       });
-  }, [debouncedNotes, userId, internalId, status]);
+  }, [debouncedNotes, notes, userId, internalId, status]);
 
   // Guarda cualquier texto pendiente de inmediato al salir, para que navegar
   // justo después de escribir no pierda texto todavía dentro de la ventana
   // de espera del debounce.
   useEffect(() => {
     return () => {
-      if (userId && internalId != null && status != null) {
-        // Queda en la cola del teléfono aunque no haya red.
-        saveUserMovie(userId, internalId, { notes: latestNotes.current || null }).catch(() => {});
-      }
+      if (!userId || internalId == null || status == null) return;
+      const next = latestNotes.current || null;
+      if (next === savedNotes.current) return;
+      savedNotes.current = next;
+      // Queda en la cola del teléfono aunque no haya red.
+      saveUserMovie(userId, internalId, { notes: next }).catch(() => {});
     };
   }, [userId, internalId, status]);
 

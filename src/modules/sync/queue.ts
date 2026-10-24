@@ -2,7 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { UserMovieFields, UserMovieRow } from '@/modules/movies/api/user-movies';
 import { supabaseRemote } from '@/modules/sync/api/remote';
-import { applyPendingToReactions, applyPendingToUserMovie } from '@/modules/sync/utils/pending-writes';
+import {
+  applyPendingToReactions,
+  applyPendingToUserMovie,
+  applyPendingToWatchedIds,
+} from '@/modules/sync/utils/pending-writes';
 import { createSyncQueue } from '@/modules/sync/utils/sync-queue';
 
 export const syncQueue = createSyncQueue({ storage: AsyncStorage, remote: supabaseRemote });
@@ -27,4 +31,9 @@ export async function withPendingUserMovie(userId: string, movieId: number, row:
 
 export async function withPendingReactions(userId: string, movieId: number, reactionIds: number[]) {
   return applyPendingToReactions(reactionIds, await syncQueue.pendingFor(userId, movieId));
+}
+
+export async function withPendingWatchedIds(userId: string, movieIds: number[], watchedIds: Set<number>) {
+  const writes = await Promise.all(movieIds.map((movieId) => syncQueue.pendingFor(userId, movieId)));
+  return applyPendingToWatchedIds(watchedIds, writes.flat());
 }

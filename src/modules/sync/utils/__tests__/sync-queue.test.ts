@@ -141,3 +141,24 @@ describe('sin red no insiste', () => {
     expect(queue.pendingCount()).toBe(3);
   });
 });
+
+describe('sin sesión válida', () => {
+  it('no sube ni descarta los pendientes hasta que vuelve la sesión', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.rows.set(MOVIE, { status: 'watched', rating: 3, notes: null, updatedAt: '2026-10-21T09:00:00.000Z' });
+
+    // El token venció y no se pudo renovar: las peticiones saldrían como anónimas.
+    server.state.signedIn = false;
+    await expect(
+      queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { rating: 4.5 }, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('pending');
+    expect(server.state.calls).toBe(0);
+    expect(queue.hasPending(MOVIE)).toBe(true);
+
+    server.state.signedIn = true;
+    await queue.flush();
+    expect(queue.hasPending(MOVIE)).toBe(false);
+    expect(server.rows.get(MOVIE)).toMatchObject({ rating: 4.5 });
+  });
+});

@@ -1,12 +1,20 @@
+-- Datos sintéticos para probar Estadísticas, Retos y Wrapped. Ejecutar en el SQL Editor después de
+-- schema.sql, cambiando seed_email por el correo de una cuenta ya registrada en la app. Al volver a
+-- ejecutarlo se reemplazan los títulos "[seed]" (y sus vistas) anteriores.
+--
 -- Determinista (sin random()) para que supabase/seed-check.sql de siempre lo mismo:
 --  * 50 títulos: cada 7.º es serie (45 min por episodio), cada 10.º no tiene duración y el resto dura entre 80 y 149 min.
 --  * 200 vistas entre el 1 de enero y el 21 de octubre de 2026, más 30 extra en julio (el mes de mayor consumo) y 10 en diciembre de 2025 (no deben contar en 2026).
 --  * Nota en cuartos de estrella para cada título, salvo cada 6.º.
 do $$
 declare
-  seed_user uuid := (select id from auth.users where email = 'rhezm1015@gmail.com');
+  seed_email constant text := 'tu-correo@ejemplo.com';
+  seed_user uuid := (select id from auth.users where email = seed_email);
 begin
-  
+  if seed_user is null then
+    raise exception 'No existe una cuenta con el correo %: regístrate en la app y cambia seed_email al inicio de supabase/seed.sql.', seed_email;
+  end if;
+
   delete from public.movies where title like '[seed] %';
 
   insert into public.movies (title, genre, duration_minutes, media_type, release_date)

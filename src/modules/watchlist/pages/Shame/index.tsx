@@ -24,6 +24,10 @@ const UNDO_MS = 5000;
 
 type Undo = { message: string; card: ShameMovie; run: () => Promise<void> };
 
+// La confirmación de borrado va dentro de la hoja: Alert con botones no
+// funciona en web.
+type Sheet = 'closed' | 'options' | 'confirm-delete';
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : '';
 }
@@ -35,10 +39,12 @@ export default function Shame() {
   const userId = session?.user.id;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [cards, setCards] = useState<ShameMovie[]>([]);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>('closed');
   const [undo, setUndo] = useState<Undo | null>(null);
   // Cambia para volver a montar la tarjeta en el centro si una acción falla.
   const [cardKey, setCardKey] = useState(0);
@@ -51,15 +57,17 @@ export default function Shame() {
     getShamePile(userId)
       .then((data) => {
         if (!active) return;
+        setLoadError(null);
         setCards(data);
         setTotal(data.length);
       })
-      .catch((err) => Alert.alert('No se pudo cargar la pila', errorMessage(err)))
+      // Sin la pila no se sabe si está al día: se muestra el error, no "Watchlist al día".
+      .catch((err) => active && setLoadError(errorMessage(err) || 'Revisa tu conexión e inténtalo de nuevo.'))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [userId, reloadKey]);
 
   // "Deshacer" queda visible 5 segundos; después el borrado es definitivo.
   useEffect(() => {
@@ -69,9 +77,15 @@ export default function Shame() {
   }, [undo]);
 
   // Al terminar la pila se vuelve a Inicio (si estaba vacía se queda el aviso).
+  // Mientras corre un "Deshacer" se espera: la tarjeta va a volver.
   useEffect(() => {
-    if (!loading && total > 0 && isDeckDone(cards, undo != null)) router.dismissTo('/explore');
-  }, [loading, total, cards, undo, router]);
+    if (!loading && !busy && total > 0 && isDeckDone(cards, undo != null)) router.dismissTo('/explore');
+  }, [loading, busy, total, cards, undo, router]);
+
+  function retryLoad() {
+    setLoading(true);
+    setReloadKey((key) => key + 1);
+  }
 
   async function act(action: () => Promise<Undo | null>, errorTitle: string) {
     if (busy) return;
@@ -79,7 +93,8 @@ export default function Shame() {
     try {
       const nextUndo = await action();
       setCards(takeTop);
-      setUndo(nextUndo);
+      // "Mantener" no tiene deshacer: no oculta el de un borrado anterior.
+      if (nextUndo) setUndo(nextUndo);
     } catch (err) {
       Alert.alert(errorTitle, errorMessage(err));
       setCardKey((key) => key + 1);
@@ -96,30 +111,18 @@ export default function Shame() {
     }, 'No se pudo mantener la película');
   }
 
-  function confirmDelete() {
+  function deleteCurrent() {
     if (!userId || !current) return;
-    setSheetOpen(false);
-    Alert.alert(
-      `¿Borrar ${current.title}?`,
-      'Sale de Ver más tarde y pierde su estado, nota y estrellas. Sigue en tus listas.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Borrar',
-          style: 'destructive',
-          onPress: () =>
-            act(async () => {
-              const snapshot = await removeTracking(userId, current.id);
-              return { message: 'Película borrada', card: current, run: () => restoreTracking(userId, current.id, snapshot) };
-            }, 'No se pudo borrar la película'),
-        },
-      ]
-    );
+    setSheet('closed');
+    act(async () => {
+      const snapshot = await removeTracking(userId, current.id);
+      return { message: 'Película borrada', card: current, run: () => restoreTracking(userId, current.id, snapshot) };
+    }, 'No se pudo borrar la película');
   }
 
   function move() {
     if (!userId || !current) return;
-    setSheetOpen(false);
+    setSheet('closed');
     act(async () => {
       const result = await moveToSomedayList(userId, current.id);
       return { message: `Movida a ${SOMEDAY_LIST_NAME}`, card: current, run: () => undoMove(userId, current.id, result) };
@@ -157,7 +160,9 @@ export default function Shame() {
         <View style={styles.headerText}>
           <Text style={styles.title}>Pila de la vergüenza</Text>
           <Text style={styles.count}>
-            {current ? `${position} de ${total} · ${SHAME_MIN_DAYS} días o más en Ver más tarde` : 'Repaso terminado'}
+            {current
+              ? `${position} de ${total} · ${SHAME_MIN_DAYS} días o más en Ver más tarde`
+              : !loadError && 'Repaso terminado'}
           </Text>
         </View>
       </View>
@@ -166,7 +171,7 @@ export default function Shame() {
         {current ? (
           <>
             <Text style={styles.hint}>Desliza a la derecha para mantenerla o a la izquierda para quitarla.</Text>
-            <SwipeCard key={`${current.id}-${cardKey}`} movie={current} onKeep={keep} onLeft={() => setSheetOpen(true)} />
+            <SwipeCard key={`${current.id}-${cardKey}`} movie={current} onKeep={keep} onLeft={() => setSheet('options')} />
             {/* Alternativa al gesto para lectores de pantalla y quien no pueda deslizar. */}
             <View style={styles.actions}>
               <Pressable
@@ -174,7 +179,7 @@ export default function Shame() {
                 accessibilityLabel={`Quitar ${current.title}`}
                 accessibilityHint="Abre las opciones para borrarla o moverla a otra lista"
                 disabled={busy}
-                onPress={() => setSheetOpen(true)}
+                onPress={() => setSheet('options')}
                 style={[styles.actionButton, styles.leftButton]}>
                 <Text style={styles.leftButtonText}>‹ Quitar</Text>
               </Pressable>
@@ -190,12 +195,20 @@ export default function Shame() {
             </View>
           </>
         ) : (
-          total === 0 && (
+          total === 0 &&
+          (loadError ? (
+            <EmptyNotice
+              title="No se pudo cargar la pila"
+              copy={loadError}
+              actionLabel="Reintentar"
+              onAction={retryLoad}
+            />
+          ) : (
             <EmptyNotice
               title="Watchlist al día 🎉"
               copy={`Ninguna película lleva ${SHAME_MIN_DAYS} días o más en Ver más tarde.`}
             />
-          )
+          ))
         )}
       </View>
 
@@ -212,22 +225,37 @@ export default function Shame() {
         transparent
         statusBarTranslucent
         animationType="slide"
-        visible={sheetOpen}
-        onRequestClose={() => setSheetOpen(false)}>
-        <Pressable accessibilityLabel="Cerrar opciones" onPress={() => setSheetOpen(false)} style={styles.backdrop} />
+        visible={sheet !== 'closed'}
+        onRequestClose={() => setSheet('closed')}>
+        <Pressable accessibilityLabel="Cerrar opciones" onPress={() => setSheet('closed')} style={styles.backdrop} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
-          <Text style={styles.sheetTitle}>{current?.title}</Text>
-          <Pressable accessibilityRole="button" onPress={move} style={styles.sheetOption}>
-            <Text style={styles.sheetOptionText}>Mover a lista</Text>
-            <Text style={styles.sheetOptionCopy}>
-              Sale de Ver más tarde y queda en “{SOMEDAY_LIST_NAME}” (se crea si no existe).
-            </Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={confirmDelete} style={styles.sheetOption}>
-            <Text style={[styles.sheetOptionText, styles.danger]}>Borrar</Text>
-            <Text style={styles.sheetOptionCopy}>Quita su seguimiento. Sigue en tus listas.</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => setSheetOpen(false)} style={styles.sheetCancel}>
+          {sheet === 'confirm-delete' ? (
+            <>
+              <Text style={styles.sheetTitle}>¿Borrar {current?.title}?</Text>
+              <Text style={styles.sheetOptionCopy}>
+                Sale de Ver más tarde y pierde su estado, nota y estrellas. Sigue en tus listas.
+              </Text>
+              <Pressable accessibilityRole="button" onPress={deleteCurrent} style={styles.sheetOption}>
+                <Text style={[styles.sheetOptionText, styles.danger]}>Borrar</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sheetTitle}>{current?.title}</Text>
+              <Pressable accessibilityRole="button" onPress={move} style={styles.sheetOption}>
+                <Text style={styles.sheetOptionText}>Mover a lista</Text>
+                <Text style={styles.sheetOptionCopy}>
+                  Sale de Ver más tarde (pierde su estado, nota y estrellas) y queda en “{SOMEDAY_LIST_NAME}” (se crea si
+                  no existe).
+                </Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setSheet('confirm-delete')} style={styles.sheetOption}>
+                <Text style={[styles.sheetOptionText, styles.danger]}>Borrar</Text>
+                <Text style={styles.sheetOptionCopy}>Quita su seguimiento. Sigue en tus listas.</Text>
+              </Pressable>
+            </>
+          )}
+          <Pressable accessibilityRole="button" onPress={() => setSheet('closed')} style={styles.sheetCancel}>
             <Text style={styles.sheetCancelText}>Cancelar</Text>
           </Pressable>
         </View>
