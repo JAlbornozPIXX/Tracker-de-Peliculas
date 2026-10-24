@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { addView, deleteView, getViews, sortViews, ViewEntry } from '@/modules/movies/api/views';
 import { toLocalDateString } from '@/modules/movies/utils/view-date';
 import { saveAutoView, syncQueue } from '@/modules/sync/queue';
@@ -14,8 +15,9 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
   const [views, setViews] = useState<ViewEntry[]>([]);
   // Cambia para volver a leer del servidor después de subir una vista.
   const [reloadKey, setReloadKey] = useState(0);
-  // Una carga que empezó antes de una escritura llega sin esa fila: se descarta.
-  const writeCount = useRef(0);
+  // Una carga que se cruza con una escritura puede llegar sin esa fila, o con
+  // ella y la escritura la agregaría otra vez: se descarta.
+  const writes = useWriteTracker();
   // Días con vista automática pendiente, como texto para que
   // useSyncExternalStore compare por valor.
   const getPendingDays = () => (movieId == null ? '' : syncQueue.pendingAutoViewDates(movieId).join(','));
@@ -26,10 +28,10 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
   useEffect(() => {
     if (!userId || movieId == null) return;
     let active = true;
-    const writesAtStart = writeCount.current;
+    const snapshot = writes.snapshot();
     getViews(userId, movieId)
       .then((rows) => {
-        if (active && writeCount.current === writesAtStart) setViews(rows);
+        if (active && writes.isQuietSince(snapshot)) setViews(rows);
       })
       .catch(() => {
         // Sin vistas cargadas la ficha sigue siendo usable; la próxima
@@ -38,12 +40,11 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
     return () => {
       active = false;
     };
-  }, [userId, movieId, pendingDays, reloadKey]);
+  }, [userId, movieId, pendingDays, reloadKey, writes]);
 
   async function registerView(resolvedMovieId: number, viewedOn: string) {
     if (!userId) return;
-    writeCount.current += 1;
-    const view = await addView(userId, resolvedMovieId, viewedOn);
+    const view = await writes.track(() => addView(userId, resolvedMovieId, viewedOn));
     setViews((current) => sortViews([...current, view]));
   }
 
@@ -52,14 +53,12 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
   // suma otra.
   async function registerAutoViewToday(resolvedMovieId: number) {
     if (!userId) return;
-    writeCount.current += 1;
-    const result = await saveAutoView(userId, resolvedMovieId, toLocalDateString(new Date()));
+    const result = await writes.track(() => saveAutoView(userId, resolvedMovieId, toLocalDateString(new Date())));
     if (result === 'saved') setReloadKey((key) => key + 1);
   }
 
   async function removeView(viewId: number) {
-    writeCount.current += 1;
-    const { error } = await deleteView(viewId);
+    const { error } = await writes.track(async () => deleteView(viewId));
     if (error) throw error;
     setViews((current) => current.filter((view) => view.id !== viewId));
   }

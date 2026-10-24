@@ -184,12 +184,7 @@ export default function MovieDetail() {
     setStatusState(next);
     if (!userId) return;
     try {
-      let id = internalId;
-      if (id == null) {
-        if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
-        id = await ensureMovieFromTmdb(tmdbDetails);
-        setTmdbInternalId(id);
-      }
+      const id = await ensureInternalMovieId();
       // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
       await saveUserMovie(userId, id, { status: next });
       if (next === 'watched') await registerFinishView(id);
@@ -217,12 +212,7 @@ export default function MovieDetail() {
     try {
       if (status == null) {
         // No hay fila en user_movies: se crea con estado Terminado y la calificación a la vez.
-        let id = internalId;
-        if (id == null) {
-          if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
-          id = await ensureMovieFromTmdb(tmdbDetails);
-          setTmdbInternalId(id);
-        }
+        const id = await ensureInternalMovieId();
         setStatusState('watched');
         await saveUserMovie(userId, id, { status: 'watched', rating: next });
         await registerFinishView(id);
@@ -236,10 +226,15 @@ export default function MovieDetail() {
     }
   }
 
+  // Crea el título de TheMovieDB en movies la primera vez que se guarda algo y
+  // recuerda el id. Los selectores y las vistas descartan la recarga que eso
+  // dispara mientras su escritura sigue en curso.
   async function ensureInternalMovieId() {
     if (internalId != null) return internalId;
     if (!tmdbDetails) throw new Error('Todavía no se cargó el título.');
-    return ensureMovieFromTmdb(tmdbDetails);
+    const id = await ensureMovieFromTmdb(tmdbDetails);
+    setTmdbInternalId(id);
+    return id;
   }
 
   async function handleAddView(viewedOn: string) {

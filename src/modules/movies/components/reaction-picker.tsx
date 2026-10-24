@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import {
   createReaction,
@@ -44,37 +45,45 @@ export function ReactionPicker({
   const [draftEmoji, setDraftEmoji] = useState('');
   const [draftName, setDraftName] = useState('');
   const [saving, setSaving] = useState(false);
+  const writes = useWriteTracker();
 
   const trimmedEmoji = draftEmoji.trim();
   const trimmedName = draftName.trim();
   const canCreate = trimmedEmoji.length > 0 && trimmedName.length > 0 && !saving;
 
+  // movieId cambia de null al id nuevo durante la primera marca de un título
+  // de TheMovieDB: esa carga se cruza con la escritura y no debe pisarla.
   useEffect(() => {
     if (!userId) return;
     let active = true;
+    const snapshot = writes.snapshot();
     Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []])
       .then(([allReactions, reactionIds]) => {
         if (!active) return;
         setReactions(allReactions);
-        setSelectedIds(reactionIds);
+        if (writes.isQuietSince(snapshot)) setSelectedIds(reactionIds);
         setLoaded(true);
       })
       .catch((err) => Alert.alert('No se pudieron cargar los calificadores', err instanceof Error ? err.message : ''));
     return () => {
       active = false;
     };
-  }, [userId, movieId]);
+  }, [userId, movieId, writes]);
 
-  // Un calificador pendiente que el servidor rechazó: se vuelve a lo guardado.
+  // Un calificador pendiente que el servidor rechazó o que perdió contra un
+  // cambio más reciente: se vuelve a lo guardado.
   useEffect(() => {
     if (!userId || movieId == null) return;
     return syncQueue.subscribeDiscarded((discardedId) => {
       if (discardedId !== movieId) return;
+      const snapshot = writes.snapshot();
       loadSelectedIds(userId, movieId)
-        .then(setSelectedIds)
+        .then((reactionIds) => {
+          if (writes.isQuietSince(snapshot)) setSelectedIds(reactionIds);
+        })
         .catch(() => {});
     });
-  }, [userId, movieId]);
+  }, [userId, movieId, writes]);
 
   async function handleToggle(reactionId: number) {
     if (!userId) return;
@@ -82,9 +91,11 @@ export function ReactionPicker({
     setSelectedIds((current) => (wasSelected ? current.filter((id) => id !== reactionId) : [...current, reactionId]));
 
     try {
-      const resolvedMovieId = movieId ?? (await ensureMovieId());
-      // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
-      await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
+      await writes.track(async () => {
+        const resolvedMovieId = movieId ?? (await ensureMovieId());
+        // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
+        await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
+      });
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, reactionId] : current.filter((id) => id !== reactionId)));
       Alert.alert(
