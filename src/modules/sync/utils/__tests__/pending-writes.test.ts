@@ -1,4 +1,11 @@
-import { applyPendingToReactions, applyPendingToUserMovie, isRetryableStatus, mergeWrite, PendingWrite } from '../pending-writes';
+import {
+  applyPendingToReactions,
+  applyPendingToUserMovie,
+  applyPendingToWatchedIds,
+  isRetryableStatus,
+  mergeWrite,
+  PendingWrite,
+} from '../pending-writes';
 
 const at = '2026-10-21T10:00:00.000Z';
 
@@ -53,5 +60,17 @@ describe('superponer pendientes', () => {
 
   it('aplica los calificadores marcados y desmarcados', () => {
     expect(applyPendingToReactions([1, 2], writes)).toEqual([1, 4]);
+  });
+
+  it('un estado pendiente suma o quita la película de las Terminadas', () => {
+    const pending: PendingWrite[] = [
+      { kind: 'user_movie', movieId: 2, fields: { status: 'watched' }, changedAt: at },
+      { kind: 'user_movie', movieId: 3, fields: { status: 'watching' }, changedAt: at },
+      { kind: 'user_movie', movieId: 4, fields: { rating: 4 }, changedAt: at },
+      { kind: 'reaction', movieId: 5, reactionId: 1, selected: true, changedAt: at },
+    ];
+    const watched = new Set([3, 4, 5]);
+    expect(applyPendingToWatchedIds(watched, pending)).toEqual(new Set([2, 4, 5]));
+    expect(watched).toEqual(new Set([3, 4, 5]));
   });
 });

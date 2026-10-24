@@ -62,3 +62,15 @@ export function applyPendingToReactions(reactionIds: number[], writes: PendingWr
   }
   return next;
 }
+
+// Para las barras de avance: un estado pendiente de subir decide si la
+// película cuenta como Terminada, igual que en la ficha.
+export function applyPendingToWatchedIds(watchedIds: ReadonlySet<number>, writes: PendingWrite[]): Set<number> {
+  const next = new Set(watchedIds);
+  for (const write of writes) {
+    if (write.kind !== 'user_movie' || write.fields.status === undefined) continue;
+    if (write.fields.status === 'watched') next.add(write.movieId);
+    else next.delete(write.movieId);
+  }
+  return next;
+}

@@ -25,6 +25,7 @@ import { isOrderedKind, LIST_KINDS, ListKind, listKindLabel } from '@/modules/li
 import { sortListMovies } from '@/modules/lists/utils/list-order';
 import { getDistinctGenres } from '@/modules/movies/api/movies';
 import { getWatchedMovieIds } from '@/modules/movies/api/user-movies';
+import { withPendingWatchedIds } from '@/modules/sync/queue';
 
 const POSTER_WIDTH = 132;
 const GRID_COLUMNS = 3;
@@ -73,6 +74,8 @@ export default function Lists() {
   // Resultado del último género consultado; si no coincide con genre, está cargando.
   const [genreResult, setGenreResult] = useState<{ genre: string; movies: MovieCardData[] } | null>(null);
   const [creating, setCreating] = useState(false);
+  // Sube con cada foco para que la grilla de un género también se recargue.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Se recarga al volver del detalle de una película o de una lista, donde
   // se pueden quitar títulos, cambiar su estado o eliminar la lista.
@@ -80,12 +83,24 @@ export default function Lists() {
     useCallback(() => {
       if (!userId) return;
       let active = true;
-      Promise.all([getListsWithMovies(userId), getWatchedMovieIds(userId), getDistinctGenres()])
-        .then(([listData, watched, genreData]) => {
+      setReloadKey((key) => key + 1);
+      // Las Terminadas y los géneros son secundarios: si fallan, las listas se
+      // muestran igual.
+      Promise.all([
+        getListsWithMovies(userId),
+        getWatchedMovieIds(userId).catch(() => null),
+        getDistinctGenres().catch(() => null),
+      ])
+        .then(async ([listData, watched, genreData]) => {
           if (!active) return;
           setLists(listData);
-          setWatchedIds(watched);
-          setGenres(genreData);
+          if (genreData) setGenres(genreData);
+          if (!watched) return;
+          // Los estados que aún no se suben (sin red o recién marcados en la
+          // ficha) cuentan igual en las barras de avance.
+          const listedIds = [...new Set(listData.flatMap((list) => list.movies.map((movie) => movie.id)))];
+          const withPending = await withPendingWatchedIds(userId, listedIds, watched);
+          if (active) setWatchedIds(withPending);
         })
         .catch((err) => Alert.alert('No se pudieron cargar tus listas', err instanceof Error ? err.message : ''))
         .finally(() => active && setLoading(false));
@@ -108,7 +123,7 @@ export default function Lists() {
     return () => {
       active = false;
     };
-  }, [userId, genre]);
+  }, [userId, genre, reloadKey]);
 
   const visibleLists = lists.filter((list) => list.kind === tab);
   const showingGenre = tab === 'category' && genre != null;
@@ -121,7 +136,9 @@ export default function Lists() {
   }
 
   // Lleva a otra sección con contenido: otra pestaña con listas o, si no
-  // hay ninguna, un género. Desde un género vacío vuelve a las categorías.
+  // hay ninguna, los géneros de Categoría (sin elegir uno: podría estar vacío
+  // y el botón volvería aquí). Desde un género vacío vuelve a las categorías,
+  // y si tampoco hay nada ofrece crear una lista.
   function changeFilter() {
     if (showingGenre) {
       setGenre(null);
@@ -130,9 +147,8 @@ export default function Lists() {
     const other = LIST_KINDS.find((kind) => kind.key !== tab && lists.some((list) => list.kind === kind.key));
     if (other) {
       selectTab(other.key);
-    } else if (genres.length > 0) {
-      setTab('category');
-      setGenre(genres[0]);
+    } else if (tab !== 'category' && genres.length > 0) {
+      selectTab('category');
     } else {
       setCreating(true);
     }
@@ -154,7 +170,7 @@ export default function Lists() {
     );
   }
 
-  const hasOtherContent = lists.some((list) => list.kind !== tab) || genres.length > 0;
+  const hasOtherContent = lists.some((list) => list.kind !== tab) || (tab !== 'category' && genres.length > 0);
   const emptyKindLabel = listKindLabel(tab).toLowerCase();
 
   return (

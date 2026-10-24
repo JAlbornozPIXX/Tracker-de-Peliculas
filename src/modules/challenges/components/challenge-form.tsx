@@ -102,7 +102,10 @@ export function ChallengeForm({
     const message =
       validateChallenge(values) ??
       (filterMode === 'genre' && values.filter.genre == null ? 'Elige un género o cuenta todas las películas.' : null) ??
-      (filterMode === 'list' && values.filter.list_id == null ? 'Elige una lista o cuenta todas las películas.' : null);
+      // "Crear otro" copia el filtro del reto anterior, cuya lista pudo borrarse.
+      (filterMode === 'list' && !lists.some((list) => list.id === values.filter.list_id)
+        ? 'Elige una lista o cuenta todas las películas.'
+        : null);
     if (message) {
       setError(message);
       return;
