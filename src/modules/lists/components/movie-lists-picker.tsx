@@ -33,22 +33,19 @@ export function MovieListsPicker({
   const writes = useWriteTracker();
 
   // movieId cambia de null al id nuevo durante el primer cambio de un título
-  // de TheMovieDB: esa carga se cruza con la escritura y no debe pisarla.
+  // de TheMovieDB: esa carga no debe pisar el cambio en curso, así que espera
+  // a que termine (y se repite si se cruza con otro).
   useEffect(() => {
     if (!userId) return;
-    let active = true;
-    const snapshot = writes.snapshot();
-    Promise.all([getLists(userId), movieId != null ? getListIdsForMovie(movieId) : []])
-      .then(([userLists, listIds]) => {
-        if (!active) return;
+    return writes.loadWhenIdle(
+      () => Promise.all([getLists(userId), movieId != null ? getListIdsForMovie(movieId) : []]),
+      ([userLists, listIds]) => {
         setLists(userLists);
-        if (writes.isQuietSince(snapshot)) setSelectedIds(listIds);
+        setSelectedIds(listIds);
         setLoaded(true);
-      })
-      .catch((err) => showAlert('No se pudieron cargar tus listas', errorMessage(err)));
-    return () => {
-      active = false;
-    };
+      },
+      (err) => showAlert('No se pudieron cargar tus listas', errorMessage(err))
+    );
   }, [userId, movieId, writes]);
 
   async function handleToggle(listId: number) {

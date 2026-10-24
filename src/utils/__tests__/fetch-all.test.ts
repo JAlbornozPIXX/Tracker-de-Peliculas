@@ -43,6 +43,14 @@ describe('fetchAllRows', () => {
     expect(ranges.map(([from]) => from)).toEqual([0, 1000, 1500]);
   });
 
+  it('si se borraron filas entre páginas, el 416 de PostgREST termina la lectura', async () => {
+    const page = jest
+      .fn()
+      .mockResolvedValueOnce({ data: Array.from({ length: 1000 }, (_, i) => ({ id: i })), error: null, count: 1003 })
+      .mockResolvedValueOnce({ data: null, error: { code: 'PGRST103', message: 'Requested range not satisfiable' }, count: null });
+    await expect(fetchAllRows(page)).resolves.toHaveLength(1000);
+  });
+
   it('propaga el error de Supabase', async () => {
     const error = { message: 'JWT expired' };
     await expect(fetchAllRows(async () => ({ data: null, error, count: null }))).rejects.toEqual(error);

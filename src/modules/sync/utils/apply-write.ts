@@ -143,5 +143,8 @@ export async function applyWrite(userId: string, write: PendingWrite, remote: Sy
       const result = await remote.addAutoViewIfNone(userId, write.movieId, write.viewedOn);
       return result.error ? failure(result) : { type: 'saved' };
     }
+    default:
+      // Un tipo que esta versión no conoce: no hay cómo subirlo.
+      return { type: 'rejected', error: { message: 'Cambio de una versión desconocida de la app.', code: '' } };
   }
 }

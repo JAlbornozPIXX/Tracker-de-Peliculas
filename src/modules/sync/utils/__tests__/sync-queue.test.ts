@@ -93,7 +93,7 @@ describe('gana el más reciente', () => {
 
     expect(server.rows.get(MOVIE)?.notes).toBe('desde el otro');
     expect(queue.hasPending(MOVIE)).toBe(false);
-    expect(discarded).toHaveBeenCalledWith(MOVIE);
+    expect(discarded).toHaveBeenCalledWith(MOVIE, 'user_movie');
   });
 
   it('si el pendiente es más nuevo que el servidor, se aplica', async () => {
@@ -134,7 +134,7 @@ describe('gana el más reciente, campo por campo', () => {
     expect(server.rows.get(MOVIE)).toMatchObject({ rating: 5, notes: 'la vi de nuevo' });
     expect(queue.hasPending(MOVIE)).toBe(false);
     // La ficha vuelve a leer: las estrellas que mostraba no quedaron en el servidor.
-    expect(discarded).toHaveBeenCalledWith(MOVIE);
+    expect(discarded).toHaveBeenCalledWith(MOVIE, 'user_movie');
   });
 
   it('un cambio más nuevo en otro campo no descarta el pendiente', async () => {
@@ -258,6 +258,73 @@ describe('vista automática sin red', () => {
       open().save(USER, { kind: 'auto_view', movieId: MOVIE, viewedOn: today, changedAt: '2026-10-21T10:00:00.000Z' })
     ).resolves.toBe('saved');
     expect(server.views).toHaveLength(1);
+  });
+});
+
+describe('casos de borde de la cola', () => {
+  it('si otro dispositivo crea la fila entre el update y el insert, se actualiza en la segunda vuelta', async () => {
+    const { server, open } = setup();
+    const insert = server.remote.insertUserMovie;
+    server.remote.insertUserMovie = async (...args) => {
+      // El otro dispositivo gana la carrera: la fila ya existe, con una hora anterior.
+      server.rows.set(MOVIE, serverRow({ status: 'watchlist', rating: null, notes: null }, '2026-10-21T09:00:00.000Z'));
+      server.remote.insertUserMovie = insert;
+      return { status: 409, error: { message: 'duplicate key value violates unique constraint', code: '23505' } };
+    };
+
+    await expect(
+      open().save(USER, {
+        kind: 'user_movie',
+        movieId: MOVIE,
+        fields: { status: 'watched', rating: 4 },
+        changedAt: '2026-10-21T10:00:00.000Z',
+      })
+    ).resolves.toBe('saved');
+    expect(server.rows.get(MOVIE)).toMatchObject({ status: 'watched', rating: 4 });
+  });
+
+  it('el insert guarda la hora de cada campo', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.state.online = false;
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { status: 'watched' }, changedAt: '2026-10-21T10:00:00.000Z' });
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { notes: 'después' }, changedAt: '2026-10-21T10:05:00.000Z' });
+    server.state.online = true;
+    await queue.flush();
+
+    expect(server.rows.get(MOVIE)?.changedAt).toEqual({
+      status: '2026-10-21T10:00:00.000Z',
+      rating: '2026-10-21T10:00:00.000Z',
+      notes: '2026-10-21T10:05:00.000Z',
+    });
+  });
+
+  it('el aviso de descarte dice qué dato volver a leer', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    const discarded = jest.fn();
+    queue.subscribeDiscarded(discarded);
+    server.reactions.set(`${MOVIE}:1`, { selected: true, changedAt: '2026-10-21T11:00:00.000Z' });
+
+    await queue.save(USER, { kind: 'reaction', movieId: MOVIE, reactionId: 1, selected: false, changedAt: '2026-10-21T10:00:00.000Z' });
+    expect(discarded).toHaveBeenCalledWith(MOVIE, 'reaction');
+  });
+
+  it('una entrada guardada que esta versión no conoce se descarta y no traba la cola', async () => {
+    const { server, storage, open } = setup();
+    storage.data.set(
+      `cineteca:pending-writes:v1:${USER}`,
+      JSON.stringify([
+        { kind: 'algo_nuevo', movieId: MOVIE, changedAt: '2026-10-21T09:00:00.000Z' },
+        { kind: 'reaction', movieId: MOVIE, reactionId: 2, selected: true, changedAt: '2026-10-21T10:00:00.000Z' },
+      ])
+    );
+    const queue = open();
+    await queue.setUser(USER);
+    expect(queue.pendingCount()).toBe(1);
+    await queue.flush();
+    expect(queue.pendingCount()).toBe(0);
+    expect(server.selectedReactions()).toEqual([`${MOVIE}:2`]);
   });
 });
 

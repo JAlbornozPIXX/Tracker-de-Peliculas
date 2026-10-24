@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
 import { GoldenPoster } from '@/components/golden-poster';
+import { useAuth } from '@/modules/auth/context/AuthContext';
 import { ListsSection } from '@/modules/lists/components/lists-section';
 import { getCatalogMovies } from '@/modules/movies/api/movies';
 import { getProfile } from '@/modules/profile/api/profile';
@@ -136,6 +138,10 @@ function SectionTitle({ title, count }: { title: string; count?: number }) {
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // La sesión guardada: no depende de la red, así Inicio carga lo que pueda sin conexión.
+  const { session } = useAuth();
+  const userId = session?.user.id;
+  const email = session?.user.email;
   const [movies, setMovies] = useState<Movie[]>([]);
   const [watching, setWatching] = useState<TrackedMovie[]>([]);
   // Nota del usuario por movie_id, para el marco dorado del catálogo.
@@ -152,10 +158,6 @@ export default function ExploreScreen() {
       let active = true;
 
       async function loadHome() {
-        const userResult = await supabase.auth.getUser();
-        if (!active) return;
-
-        const userId = userResult.data.user?.id;
         if (userId) {
           let catalogError: unknown = null;
           const [catalog, tracked, profile, shame] = await Promise.all([
@@ -189,7 +191,7 @@ export default function ExploreScreen() {
           setAvatarUrl(
             profile?.avatarUrl ? `${profile.avatarUrl}?t=${encodeURIComponent(profile.updatedAt ?? '')}` : null
           );
-          setAvatarLabel(profile?.displayName || userResult.data.user?.email || '');
+          setAvatarLabel(profile?.displayName || email || '');
 
           if (tracked) {
             setWatching(tracked.filter((item) => item.status === 'watching'));
@@ -204,7 +206,7 @@ export default function ExploreScreen() {
       return () => {
         active = false;
       };
-    }, [])
+    }, [userId, email])
   );
 
   if (loading) {
@@ -268,17 +270,24 @@ export default function ExploreScreen() {
 
         <SectionTitle title="Catálogo" count={movies.length} />
         {movies.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {movies.map((movie) => (
+          // FlatList: el catálogo completo puede tener cientos de títulos y
+          // solo se dibujan los que están cerca de la pantalla.
+          <FlatList
+            horizontal
+            data={movies}
+            keyExtractor={(movie) => String(movie.id)}
+            renderItem={({ item: movie }) => (
               <MovieCard
-                key={movie.id}
                 movie={movie}
                 rating={ratings[movie.id] ?? null}
                 compact
                 onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
               />
-            ))}
-          </ScrollView>
+            )}
+            initialNumToRender={6}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
         ) : (
           <View style={styles.emptyPanel}>
             <Text style={styles.emptyTitle}>Todavía no hay películas</Text>

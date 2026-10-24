@@ -11,11 +11,15 @@ export type SaveResult = 'saved' | 'pending' | 'superseded';
 
 const storageKey = (userId: string) => `cineteca:pending-writes:v1:${userId}`;
 
+const KNOWN_KINDS = new Set<string>(['user_movie', 'reaction', 'auto_view'] satisfies PendingWrite['kind'][]);
+
+// Una entrada que esta versión no conoce (p. ej. guardada por una versión más
+// nueva) se descarta: no hay cómo subirla y trabaría el resto de la cola.
 function parseStored(raw: string | null): PendingWrite[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter((write) => KNOWN_KINDS.has(write?.kind)) : [];
   } catch {
     return [];
   }
@@ -33,7 +37,7 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
   let flushing: Promise<void> | null = null;
   let flushAgain = false;
   const listeners = new Set<() => void>();
-  const discardListeners = new Set<(movieId: number) => void>();
+  const discardListeners = new Set<(movieId: number, kind: PendingWrite['kind']) => void>();
   // Rechazos del servidor, para que save() los devuelva como error a la UI.
   const rejections = new WeakMap<PendingWrite, RemoteError>();
   // Escrituras que perdieron contra un cambio más reciente del servidor.
@@ -99,7 +103,7 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
       queue = queue.filter((entry) => entry !== write);
       notify();
       await persist(forUser);
-      if (outcome.type !== 'saved') discardListeners.forEach((listener) => listener(write.movieId));
+      if (outcome.type !== 'saved') discardListeners.forEach((listener) => listener(write.movieId, write.kind));
     }
   }
 
@@ -162,8 +166,11 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
         listeners.delete(listener);
       };
     },
-    /** Avisa cuando un cambio pendiente se descarta porque el servidor tenía uno más nuevo o lo rechazó. */
-    subscribeDiscarded(listener: (movieId: number) => void) {
+    /**
+     * Avisa cuando un cambio pendiente se descarta porque el servidor tenía
+     * uno más nuevo o lo rechazó. kind dice qué dato volver a leer.
+     */
+    subscribeDiscarded(listener: (movieId: number, kind: PendingWrite['kind']) => void) {
       discardListeners.add(listener);
       return () => {
         discardListeners.delete(listener);

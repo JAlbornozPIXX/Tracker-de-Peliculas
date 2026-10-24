@@ -122,17 +122,21 @@ export default function MovieDetail() {
     };
   }, [userId, movieId, tmdbMediaType]);
 
-  // Un cambio pendiente se descartó porque el servidor tenía uno más reciente
-  // (o lo rechazó): se vuelve a mostrar lo que hay en el servidor.
+  // Un cambio de estado, estrellas o nota se descartó porque el servidor tenía
+  // uno más reciente (o lo rechazó): se vuelve a mostrar lo que hay en el
+  // servidor. Los calificadores los recarga su selector.
   useEffect(() => {
     if (!userId || internalId == null) return;
-    return syncQueue.subscribeDiscarded((discardedId) => {
-      if (discardedId !== internalId) return;
+    return syncQueue.subscribeDiscarded((discardedId, kind) => {
+      if (discardedId !== internalId || kind !== 'user_movie') return;
       getUserMovie(userId, internalId)
         .then((row) => withPendingUserMovie(userId, internalId, row))
         .then((tracking) => {
           setStatusState(tracking?.status ?? null);
           setRating(tracking?.rating ?? null);
+          // Un texto que se sigue escribiendo es más nuevo que el del
+          // servidor: se guarda al pasar el debounce y no se pisa.
+          if ((latestNotes.current || null) !== savedNotes.current) return;
           savedNotes.current = tracking?.notes ?? null;
           setNotes(tracking?.notes ?? '');
         })

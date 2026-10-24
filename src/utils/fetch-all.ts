@@ -2,6 +2,9 @@
 const PAGE_SIZE = 1000;
 // Ids por petición en un filtro .in(): con muchos, la URL se vuelve demasiado larga.
 const IN_CHUNK_SIZE = 200;
+// PostgREST responde 416 si la página empieza después de la última fila: pasa
+// si se borraron filas entre una página y la siguiente.
+const RANGE_NOT_SATISFIABLE = 'PGRST103';
 
 type Page = { data: unknown[] | null; error: unknown; count?: number | null };
 
@@ -16,7 +19,10 @@ export async function fetchAllRows<T>(page: (from: number, to: number) => Promis
   const rows: T[] = [];
   for (;;) {
     const { data, error, count } = await page(rows.length, rows.length + PAGE_SIZE - 1);
-    if (error) throw error;
+    if (error) {
+      if ((error as { code?: string }).code === RANGE_NOT_SATISFIABLE) return rows;
+      throw error;
+    }
     const batch = (data ?? []) as T[];
     rows.push(...batch);
     if (batch.length === 0 || (count != null && rows.length >= count)) return rows;

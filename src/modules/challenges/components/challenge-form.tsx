@@ -123,8 +123,8 @@ export function ChallengeForm({
       });
       onCreated(challenge);
     } catch (err) {
-      const message = errorMessage(err);
-      setError(message ? `No se pudo crear el reto: ${message}` : 'No se pudo crear el reto.');
+      const detail = errorMessage(err);
+      setError(detail ? `No se pudo crear el reto: ${detail}` : 'No se pudo crear el reto.');
     } finally {
       setSaving(false);
     }

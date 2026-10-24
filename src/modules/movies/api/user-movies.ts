@@ -115,15 +115,20 @@ export async function getDisqualifiedMovieIds(userId: string): Promise<number[]>
 
 // Ids de las películas Terminadas; con movieIds se limita a esas películas.
 export async function getWatchedMovieIds(userId: string, movieIds?: number[]): Promise<Set<number>> {
-  const watched = () =>
-    supabase.from('user_movies').select('movie_id', { count: 'exact' }).eq('user_id', userId).eq('status', 'watched');
+  // El total solo hace falta al paginar; cada lote de ids cabe en una página.
+  const watched = (withCount: boolean) =>
+    supabase
+      .from('user_movies')
+      .select('movie_id', withCount ? { count: 'exact' } : {})
+      .eq('user_id', userId)
+      .eq('status', 'watched');
 
   const rows = movieIds
     ? await fetchByIdChunks(movieIds, async (ids) => {
-        const { data, error } = await watched().in('movie_id', ids);
+        const { data, error } = await watched(false).in('movie_id', ids);
         if (error) throw error;
         return (data ?? []) as { movie_id: number }[];
       })
-    : await fetchAllRows<{ movie_id: number }>((from, to) => watched().order('movie_id').range(from, to));
+    : await fetchAllRows<{ movie_id: number }>((from, to) => watched(true).order('movie_id').range(from, to));
   return new Set(rows.map((row) => row.movie_id));
 }

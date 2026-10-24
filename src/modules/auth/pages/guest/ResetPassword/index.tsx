@@ -43,6 +43,9 @@ export default function ResetPassword() {
 
     supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
       setExchangeStatus(error ? 'error' : 'ready');
+      // Enlace vencido o ya usado: sin sesión que recuperar, se sale del modo
+      // recuperación para que "Volver a iniciar sesión" pueda abrir (auth).
+      if (error) setPasswordRecovery(false);
     });
   }, [code, setPasswordRecovery]);
 

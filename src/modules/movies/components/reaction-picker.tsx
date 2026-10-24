@@ -53,37 +53,36 @@ export function ReactionPicker({
   const canCreate = trimmedEmoji.length > 0 && trimmedName.length > 0 && !saving;
 
   // movieId cambia de null al id nuevo durante la primera marca de un título
-  // de TheMovieDB: esa carga se cruza con la escritura y no debe pisarla.
+  // de TheMovieDB: esa carga no debe pisar la marca en curso, así que espera a
+  // que termine (y se repite si se cruza con otra).
   useEffect(() => {
     if (!userId) return;
-    let active = true;
-    const snapshot = writes.snapshot();
-    Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []])
-      .then(([allReactions, reactionIds]) => {
-        if (!active) return;
+    return writes.loadWhenIdle(
+      () => Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []]),
+      ([allReactions, reactionIds]) => {
         setReactions(allReactions);
-        if (writes.isQuietSince(snapshot)) setSelectedIds(reactionIds);
+        setSelectedIds(reactionIds);
         setLoaded(true);
-      })
-      .catch((err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err)));
-    return () => {
-      active = false;
-    };
+      },
+      (err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err))
+    );
   }, [userId, movieId, writes]);
 
   // Un calificador pendiente que el servidor rechazó o que perdió contra un
-  // cambio más reciente: se vuelve a lo guardado.
+  // cambio más reciente: se vuelve a lo guardado, cuando no quede una marca
+  // en curso.
   useEffect(() => {
     if (!userId || movieId == null) return;
-    return syncQueue.subscribeDiscarded((discardedId) => {
-      if (discardedId !== movieId) return;
-      const snapshot = writes.snapshot();
-      loadSelectedIds(userId, movieId)
-        .then((reactionIds) => {
-          if (writes.isQuietSince(snapshot)) setSelectedIds(reactionIds);
-        })
-        .catch(() => {});
+    let cancelReload = () => {};
+    const unsubscribe = syncQueue.subscribeDiscarded((discardedId, kind) => {
+      if (discardedId !== movieId || kind !== 'reaction') return;
+      cancelReload();
+      cancelReload = writes.loadWhenIdle(() => loadSelectedIds(userId, movieId), setSelectedIds);
     });
+    return () => {
+      unsubscribe();
+      cancelReload();
+    };
   }, [userId, movieId, writes]);
 
   async function handleToggle(reactionId: number) {

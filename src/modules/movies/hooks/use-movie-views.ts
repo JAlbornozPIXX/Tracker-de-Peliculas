@@ -24,22 +24,12 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
   const pendingDays = useSyncExternalStore(syncQueue.subscribe, getPendingDays, getPendingDays);
 
   // pendingDays: cuando una vista pendiente se sube, se vuelve a leer para
-  // mostrarla con su id real.
+  // mostrarla con su id real. Si se cruza con una escritura, se repite al
+  // terminar. Sin vistas cargadas la ficha sigue siendo usable; la próxima
+  // escritura mostrará el error si el problema persiste.
   useEffect(() => {
     if (!userId || movieId == null) return;
-    let active = true;
-    const snapshot = writes.snapshot();
-    getViews(userId, movieId)
-      .then((rows) => {
-        if (active && writes.isQuietSince(snapshot)) setViews(rows);
-      })
-      .catch(() => {
-        // Sin vistas cargadas la ficha sigue siendo usable; la próxima
-        // escritura mostrará el error si el problema persiste.
-      });
-    return () => {
-      active = false;
-    };
+    return writes.loadWhenIdle(() => getViews(userId, movieId), setViews);
   }, [userId, movieId, pendingDays, reloadKey, writes]);
 
   async function registerView(resolvedMovieId: number, viewedOn: string) {

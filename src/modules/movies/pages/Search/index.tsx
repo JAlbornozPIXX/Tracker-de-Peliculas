@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -87,9 +87,14 @@ export default function Search() {
     setLoading(hasActiveSearch);
   }
 
-  useEffect(() => {
-    // Una búsqueda nueva descarta cualquier página siguiente en camino.
+  // Una búsqueda nueva descarta cualquier página siguiente en camino. Va en un
+  // efecto de layout, que corre junto con el render: así esa página no
+  // alcanza a agregarse a los resultados de la búsqueda nueva.
+  useLayoutEffect(() => {
     loadMoreController.current?.abort();
+  }, [searchKey]);
+
+  useEffect(() => {
     if (debouncedQuery.length < MIN_QUERY_LENGTH && selectedGenreIds.length === 0) return;
 
     const controller = new AbortController();
