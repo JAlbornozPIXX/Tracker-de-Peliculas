@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/modules/auth/context/AuthContext';
+import { SyncManager } from '@/modules/sync/components/sync-manager';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -13,6 +14,7 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
         <AnimatedSplashOverlay />
+        <SyncManager />
         <RootNavigator />
       </AuthProvider>
     </ThemeProvider>
