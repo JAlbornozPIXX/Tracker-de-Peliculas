@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { ChipOption, Chips, ToggleChips } from '@/components/chips';
 import { EmptyNotice } from '@/components/empty-notice';
@@ -10,6 +10,7 @@ import { getGenreDrawCandidates, getListDrawCandidates } from '@/modules/random/
 import { DrawResult, drawStyles, PrimaryButton } from '@/modules/random/components/draw-result';
 import { useDraw } from '@/modules/random/hooks/use-draw';
 import { filterByGenres, genresOf } from '@/modules/random/utils/roulette';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 type Source = 'list' | 'genres';
 
@@ -46,7 +47,7 @@ export function SimpleDrawMode({ userId }: { userId: string }) {
           setLists(listData);
           setCatalog(catalogData);
         })
-        .catch((err) => Alert.alert('No se pudo cargar tu catálogo', err instanceof Error ? err.message : ''));
+        .catch((err) => showAlert('No se pudo cargar tu catálogo', errorMessage(err)));
       return () => {
         active = false;
       };

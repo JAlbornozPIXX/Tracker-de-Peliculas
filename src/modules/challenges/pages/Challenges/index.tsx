@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyNotice } from '@/components/empty-notice';
@@ -25,6 +25,7 @@ import { getDistinctGenres } from '@/modules/movies/api/movies';
 import { DateField } from '@/modules/movies/components/date-field';
 import { formatViewDate, toLocalDateString } from '@/modules/movies/utils/view-date';
 import { getViewRecords } from '@/modules/stats/api/stats';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const MAX_DATE = '2099-12-31';
 
@@ -172,7 +173,7 @@ export default function Challenges() {
 
   function reload() {
     load(() => true).catch((err) =>
-      Alert.alert('No se pudieron cargar tus retos', err instanceof Error ? err.message : '')
+      showAlert('No se pudieron cargar tus retos', errorMessage(err))
     );
   }
 
@@ -181,7 +182,7 @@ export default function Challenges() {
     useCallback(() => {
       let active = true;
       load(() => active)
-        .catch((err) => Alert.alert('No se pudieron cargar tus retos', err instanceof Error ? err.message : ''))
+        .catch((err) => showAlert('No se pudieron cargar tus retos', errorMessage(err)))
         .finally(() => active && setLoading(false));
       return () => {
         active = false;
@@ -250,7 +251,7 @@ export default function Challenges() {
   async function handleDelete(challengeId: number) {
     const { error } = await deleteChallenge(challengeId);
     if (error) {
-      Alert.alert('No se pudo eliminar el reto', error.message);
+      showAlert('No se pudo eliminar el reto', error.message);
       return;
     }
     setChallenges((current) => current.filter((item) => item.id !== challengeId));

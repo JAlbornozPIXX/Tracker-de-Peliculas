@@ -16,6 +16,7 @@ import {
 import type { ListSummary } from '@/modules/lists/api/lists';
 import { DateField } from '@/modules/movies/components/date-field';
 import { toLocalDateString } from '@/modules/movies/utils/view-date';
+import { errorMessage } from '@/utils/alert';
 
 // El selector de fecha exige un máximo; un reto puede terminar en el futuro.
 const MAX_DATE = '2099-12-31';
@@ -122,7 +123,8 @@ export function ChallengeForm({
       });
       onCreated(challenge);
     } catch (err) {
-      setError(err instanceof Error ? `No se pudo crear el reto: ${err.message}` : 'No se pudo crear el reto.');
+      const message = errorMessage(err);
+      setError(message ? `No se pudo crear el reto: ${message}` : 'No se pudo crear el reto.');
     } finally {
       setSaving(false);
     }

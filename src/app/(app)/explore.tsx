@@ -2,7 +2,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { getShamePile } from '@/modules/watchlist/api/shame';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
+import { errorMessage, showAlert } from '@/utils/alert';
 import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
@@ -181,7 +181,7 @@ export default function ExploreScreen() {
           if (!active) return;
 
           if (catalog) setMovies(catalog);
-          else Alert.alert('No se pudo cargar el catálogo', catalogError instanceof Error ? catalogError.message : '');
+          else showAlert('No se pudo cargar el catálogo', errorMessage(catalogError));
           setShameCount(shame.length);
 
           // La foto se sube siempre a la misma URL; updated_at cambia con cada

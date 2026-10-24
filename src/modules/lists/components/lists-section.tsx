@@ -1,11 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Chips } from '@/components/chips';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { createList, getLists, LIST_NAME_MAX, ListSummary } from '@/modules/lists/api/lists';
 import { DEFAULT_LIST_KIND, LIST_KINDS, ListKind, listKindLabel } from '@/modules/lists/constants/kinds';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 export function ListsSection() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function ListsSection() {
       let active = true;
       getLists(userId)
         .then((data) => active && setLists(data))
-        .catch((err) => Alert.alert('No se pudieron cargar tus listas', err instanceof Error ? err.message : ''));
+        .catch((err) => showAlert('No se pudieron cargar tus listas', errorMessage(err)));
       return () => {
         active = false;
       };
@@ -42,7 +43,7 @@ export function ListsSection() {
     setCreating(false);
 
     if (error) {
-      Alert.alert('No se pudo crear la lista', error.message);
+      showAlert('No se pudo crear la lista', error.message);
       return;
     }
     setLists((current) => [...current, { id: data.id, name: data.name, kind: data.kind, movieCount: 0 }]);

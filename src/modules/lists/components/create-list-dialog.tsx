@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Chips } from '@/components/chips';
 import { createList, LIST_NAME_MAX } from '@/modules/lists/api/lists';
 import { LIST_KINDS, ListKind } from '@/modules/lists/constants/kinds';
+import { showAlert } from '@/utils/alert';
 
 /**
  * Diálogo para crear una lista pidiendo nombre y tipo. Se abre con el tipo de
@@ -36,7 +37,7 @@ export function CreateListDialog({
     const { data, error } = await createList(userId, trimmedName, kind);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo crear la lista', error.message);
+      showAlert('No se pudo crear la lista', error.message);
       return;
     }
     onCreated(data);

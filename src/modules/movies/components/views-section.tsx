@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ViewEntry } from '@/modules/movies/api/views';
 import { DateField } from '@/modules/movies/components/date-field';
 import { formatViewCount, formatViewDate, toLocalDateString } from '@/modules/movies/utils/view-date';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 /**
  * Resumen "Vista N veces · última: fecha", lista de vistas con borrado y
@@ -49,7 +50,7 @@ export function ViewsSection({
       await onAdd(draftDate);
       setDialog('none');
     } catch (err) {
-      Alert.alert('No se pudo registrar la vista', err instanceof Error ? err.message : '');
+      showAlert('No se pudo registrar la vista', errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -62,7 +63,7 @@ export function ViewsSection({
       await onDelete(pendingDelete.id);
       setDialog('none');
     } catch (err) {
-      Alert.alert('No se pudo borrar la vista', err instanceof Error ? err.message : '');
+      showAlert('No se pudo borrar la vista', errorMessage(err));
     } finally {
       setSaving(false);
     }

@@ -2,7 +2,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -17,6 +16,7 @@ import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
+import { showAlert } from '@/utils/alert';
 import { supabase } from '@/utils/supabase';
 
 export default function ResetPassword() {
@@ -60,7 +60,7 @@ export default function ResetPassword() {
     setIsSubmitting(false);
 
     if (error) {
-      Alert.alert('No se pudo actualizar la contraseña', error.message);
+      showAlert('No se pudo actualizar la contraseña', error.message);
       return;
     }
 

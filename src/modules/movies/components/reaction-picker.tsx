@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useWriteTracker } from '@/hooks/use-write-tracker';
@@ -13,6 +13,7 @@ import {
   REACTION_NAME_MAX,
 } from '@/modules/movies/api/reactions';
 import { saveMovieReaction, syncQueue, withPendingReactions } from '@/modules/sync/queue';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const PREVIEW_COUNT = 3;
 
@@ -64,7 +65,7 @@ export function ReactionPicker({
         if (writes.isQuietSince(snapshot)) setSelectedIds(reactionIds);
         setLoaded(true);
       })
-      .catch((err) => Alert.alert('No se pudieron cargar los calificadores', err instanceof Error ? err.message : ''));
+      .catch((err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err)));
     return () => {
       active = false;
     };
@@ -98,9 +99,9 @@ export function ReactionPicker({
       });
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, reactionId] : current.filter((id) => id !== reactionId)));
-      Alert.alert(
+      showAlert(
         wasSelected ? 'No se pudo quitar el calificador' : 'No se pudo marcar el calificador',
-        err instanceof Error ? err.message : ''
+        errorMessage(err)
       );
     }
   }
@@ -117,7 +118,7 @@ export function ReactionPicker({
     const { data, error } = await createReaction(userId, trimmedEmoji, trimmedName);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo crear el calificador', error.message);
+      showAlert('No se pudo crear el calificador', error.message);
       return;
     }
     setReactions((current) => [...current, data]);

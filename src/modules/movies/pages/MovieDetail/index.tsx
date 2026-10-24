@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GoldenPoster } from '@/components/golden-poster';
@@ -18,6 +18,7 @@ import { StatusKey } from '@/modules/movies/constants/status';
 import { useMovieViews } from '@/modules/movies/hooks/use-movie-views';
 import { usePendingSync } from '@/modules/sync/hooks/use-pending-sync';
 import { saveUserMovie, syncQueue, withPendingUserMovie } from '@/modules/sync/queue';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const NOTES_MAX = 2000;
 const NOTES_DEBOUNCE_MS = 900;
@@ -92,7 +93,7 @@ export default function MovieDetail() {
         })
         .catch((err: unknown) => {
           if (err instanceof Error && err.name === 'AbortError') return;
-          Alert.alert('No se pudo cargar la película', err instanceof Error ? err.message : '');
+          showAlert('No se pudo cargar la película', errorMessage(err));
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
@@ -114,7 +115,7 @@ export default function MovieDetail() {
         setNotes(tracking?.notes ?? '');
         hasLoaded.current = true;
       })
-      .catch((err) => Alert.alert('No se pudo cargar la película', err instanceof Error ? err.message : ''))
+      .catch((err) => showAlert('No se pudo cargar la película', errorMessage(err)))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
@@ -161,7 +162,7 @@ export default function MovieDetail() {
       .catch((err) => {
         if (savedNotes.current === next) savedNotes.current = previous;
         setNoteSaveState('idle');
-        Alert.alert('No se pudo guardar la nota', err instanceof Error ? err.message : '');
+        showAlert('No se pudo guardar la nota', errorMessage(err));
       });
   }, [debouncedNotes, notes, userId, internalId, status]);
 
@@ -190,7 +191,7 @@ export default function MovieDetail() {
       if (next === 'watched') await registerFinishView(id);
     } catch (err) {
       setStatusState(previous);
-      Alert.alert('No se pudo actualizar el estado', err instanceof Error ? err.message : '');
+      showAlert('No se pudo actualizar el estado', errorMessage(err));
     }
   }
 
@@ -200,7 +201,7 @@ export default function MovieDetail() {
     try {
       await registerAutoViewToday(id);
     } catch (err) {
-      Alert.alert('No se pudo registrar la vista', err instanceof Error ? err.message : '');
+      showAlert('No se pudo registrar la vista', errorMessage(err));
     }
   }
 
@@ -222,7 +223,7 @@ export default function MovieDetail() {
     } catch (err) {
       setRating(previousRating);
       setStatusState(previousStatus);
-      Alert.alert('No se pudo guardar la calificación', err instanceof Error ? err.message : '');
+      showAlert('No se pudo guardar la calificación', errorMessage(err));
     }
   }
 

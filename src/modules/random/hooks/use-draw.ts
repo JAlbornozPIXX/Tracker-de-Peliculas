@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { Alert } from 'react-native';
 
 import type { MovieRow } from '@/modules/movies/api/movies';
 import { pickRandom } from '@/modules/random/utils/roulette';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 // setup: eligiendo filtros u origen; empty: no hay candidatas; exhausted: ya
 // salieron todas las candidatas en esta sesión.
@@ -41,7 +41,7 @@ export function useDraw() {
       setCandidates(pool);
       suggest(pool, resetSeen ? new Set() : seenIds);
     } catch (err) {
-      Alert.alert(errorTitle, err instanceof Error ? err.message : '');
+      showAlert(errorTitle, errorMessage(err));
       setPhase('setup');
     }
   }

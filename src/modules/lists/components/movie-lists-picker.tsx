@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
@@ -10,6 +10,7 @@ import {
   ListSummary,
   removeMovieFromList,
 } from '@/modules/lists/api/lists';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 /**
  * Chips para agregar o quitar un título de las listas del usuario.
@@ -44,7 +45,7 @@ export function MovieListsPicker({
         if (writes.isQuietSince(snapshot)) setSelectedIds(listIds);
         setLoaded(true);
       })
-      .catch((err) => Alert.alert('No se pudieron cargar tus listas', err instanceof Error ? err.message : ''));
+      .catch((err) => showAlert('No se pudieron cargar tus listas', errorMessage(err)));
     return () => {
       active = false;
     };
@@ -64,9 +65,9 @@ export function MovieListsPicker({
       });
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, listId] : current.filter((id) => id !== listId)));
-      Alert.alert(
+      showAlert(
         wasSelected ? 'No se pudo quitar de la lista' : 'No se pudo agregar a la lista',
-        err instanceof Error ? err.message : ''
+        errorMessage(err)
       );
     }
   }

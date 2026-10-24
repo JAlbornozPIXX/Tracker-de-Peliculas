@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -15,6 +14,7 @@ import { AuthButton } from '@/modules/auth/components/auth-button';
 import { AuthTextField } from '@/modules/auth/components/auth-text-field';
 import { validateEmail, validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
+import { showAlert } from '@/utils/alert';
 import { supabase } from '@/utils/supabase';
 
 export default function SignIn() {
@@ -36,7 +36,7 @@ export default function SignIn() {
     setIsSubmitting(false);
 
     if (error) {
-      Alert.alert('No se pudo iniciar sesión', error.message);
+      showAlert('No se pudo iniciar sesión', error.message);
       return;
     }
 
