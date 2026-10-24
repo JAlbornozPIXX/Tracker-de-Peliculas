@@ -58,6 +58,20 @@ export async function getViewRecords(userId: string, period: StatsPeriod): Promi
   return rows.map(toViewRecord);
 }
 
+// Día de la vista más reciente, o null si todavía no hay ninguna.
+export async function getLatestViewDate(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('movie_views')
+    .select('viewed_on')
+    .eq('user_id', userId)
+    .order('viewed_on', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.viewed_on ?? null;
+}
+
 export async function viewsPerDay(userId: string, period: StatsPeriod): Promise<DayCount[]> {
   return countByDay(await getViewRecords(userId, period));
 }

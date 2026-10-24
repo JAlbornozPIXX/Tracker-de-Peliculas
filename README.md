@@ -29,7 +29,7 @@ Para abrir en navegador:
 npm run web
 ```
 
-Con [Expo Go](https://expo.dev/go) no hace falta compilar: los modulos nativos que usa la app (por ejemplo `expo-sharing` y `react-native-view-shot` para compartir el Wrapped) vienen incluidos. Si usas una compilacion propia (`npm run android` o `npm run ios`, que generan las carpetas `android/` e `ios/`), vuelve a compilarla cada vez que cambien las dependencias nativas:
+Con [Expo Go](https://expo.dev/go) no hace falta compilar: los modulos nativos que usa la app (por ejemplo `expo-sharing` y `react-native-view-shot` para compartir el Wrapped, y `react-native-svg` para los graficos de Estadisticas) vienen incluidos. Si usas una compilacion propia (`npm run android` o `npm run ios`, que generan las carpetas `android/` e `ios/`), vuelve a compilarla cada vez que cambien las dependencias nativas:
 
 ```bash
 npx expo prebuild --clean
