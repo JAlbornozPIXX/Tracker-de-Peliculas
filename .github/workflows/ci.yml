@@ -23,5 +23,8 @@ jobs:
       - name: Verificar tipos
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npm run lint
+
       - name: Pruebas unitarias
         run: npx jest --ci

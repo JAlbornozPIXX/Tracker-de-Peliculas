@@ -23,7 +23,9 @@ export default function ResetPassword() {
   const router = useRouter();
   const { code } = useLocalSearchParams<{ code?: string }>();
   const { setPasswordRecovery } = useAuth();
-  const [status, setStatus] = useState<'validating' | 'ready' | 'error'>('validating');
+  const [exchangeStatus, setExchangeStatus] = useState<'validating' | 'ready' | 'error'>('validating');
+  // Sin code en el enlace no hay nada que validar.
+  const status = code ? exchangeStatus : 'error';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<{ password?: string; confirmPassword?: string }>({});
@@ -31,11 +33,7 @@ export default function ResetPassword() {
   const hasExchanged = useRef(false);
 
   useEffect(() => {
-    if (!code) {
-      setStatus('error');
-      return;
-    }
-    if (hasExchanged.current) return;
+    if (!code || hasExchanged.current) return;
     hasExchanged.current = true;
 
     // Marcamos "modo recuperación" de inmediato, antes de que la promesa
@@ -44,7 +42,7 @@ export default function ResetPassword() {
     setPasswordRecovery(true);
 
     supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      setStatus(error ? 'error' : 'ready');
+      setExchangeStatus(error ? 'error' : 'ready');
     });
   }, [code, setPasswordRecovery]);
 
