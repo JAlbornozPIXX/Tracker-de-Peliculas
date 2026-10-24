@@ -7,6 +7,12 @@ export type RemoteResult = { status: number; error: RemoteError | null };
 // Operaciones contra Supabase que necesita la cola. Se reciben como parámetro
 // para poder probar la sincronización sin red.
 export type SyncRemote = {
+  /**
+   * true si hay una sesión válida de userId. Sin ella las peticiones salen como
+   * anónimas y RLS responde 0 filas, que applyWrite tomaría como "el servidor
+   * tiene algo más nuevo" y descartaría el pendiente.
+   */
+  hasSession(userId: string): Promise<boolean>;
   /** Aplica los campos solo si updated_at en el servidor es <= changedAt. */
   updateUserMovieIfOlder(
     userId: string,

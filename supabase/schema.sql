@@ -12,7 +12,7 @@ create table if not exists public.user_movies (
   user_id uuid not null references auth.users(id) on delete cascade,
   movie_id bigint not null references public.movies(id) on delete cascade,
   status text not null check (status in ('watchlist', 'watching', 'watched', 'paused', 'abandoned')),
-  rating numeric(3, 2) check (rating is null or (rating >= 0 and rating <= 5 and rating * 4 = trunc(rating * 4))),
+  rating numeric(3, 2) check (rating is null or (rating >= 0.25 and rating <= 5 and rating * 4 = trunc(rating * 4))),
   notes text,
   updated_at timestamptz not null default now(),
   primary key (user_id, movie_id)
@@ -190,8 +190,10 @@ alter table public.user_movies alter column rating type numeric(3, 2);
 -- Valores que el tipo anterior ya redondeó (p. ej. 4,3) vuelven al cuarto más cercano.
 update public.user_movies set rating = round(rating * 4) / 4
 where rating is not null and rating * 4 <> trunc(rating * 4);
+-- RN-02: la nota va de 0,25 a 5; un 0 (la app nunca lo genera) queda sin nota.
+update public.user_movies set rating = null where rating < 0.25;
 alter table public.user_movies add constraint user_movies_rating_check
-  check (rating is null or (rating >= 0 and rating <= 5 and rating * 4 = trunc(rating * 4)));
+  check (rating is null or (rating >= 0.25 and rating <= 5 and rating * 4 = trunc(rating * 4)));
 
 -- Perfiles: nombre visible y avatar (src/modules/profile/api/profile.ts usa upsert,
 -- por eso cada usuario necesita select, insert y update sobre su propia fila).
