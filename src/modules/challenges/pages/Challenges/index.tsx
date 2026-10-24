@@ -7,7 +7,7 @@ import { EmptyNotice } from '@/components/empty-notice';
 import { HomeBackButton } from '@/components/home-back-button';
 import { ProgressBar } from '@/components/progress-bar';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import { deleteChallenge, extendChallenge, getChallenges, getViewsBetween } from '@/modules/challenges/api/challenges';
+import { deleteChallenge, extendChallenge, getChallenges } from '@/modules/challenges/api/challenges';
 import { ChallengeForm, ChallengeFormValues, emptyChallengeForm } from '@/modules/challenges/components/challenge-form';
 import {
   addDays,
@@ -24,6 +24,7 @@ import { getListMemberships, getLists, ListSummary } from '@/modules/lists/api/l
 import { getDistinctGenres } from '@/modules/movies/api/movies';
 import { DateField } from '@/modules/movies/components/date-field';
 import { formatViewDate, toLocalDateString } from '@/modules/movies/utils/view-date';
+import { getViewRecords } from '@/modules/stats/api/stats';
 
 const MAX_DATE = '2099-12-31';
 
@@ -153,12 +154,12 @@ export default function Challenges() {
         getChallenges(userId),
         getListMemberships(),
         getLists(userId),
-        getDistinctGenres(),
+        getDistinctGenres(userId),
       ]);
       // Una sola consulta de vistas cubre las fechas de todos los retos.
       const from = challengeData.reduce((min, c) => (c.startsOn < min ? c.startsOn : min), MAX_DATE);
       const to = challengeData.reduce((max, c) => (c.endsOn > max ? c.endsOn : max), '');
-      const viewData = challengeData.length > 0 ? await getViewsBetween(userId, from, to) : [];
+      const viewData = challengeData.length > 0 ? await getViewRecords(userId, { from, to }) : [];
       if (!isActive()) return;
       setChallenges(challengeData);
       setMemberships(membershipData);

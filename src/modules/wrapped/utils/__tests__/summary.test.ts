@@ -2,7 +2,7 @@ import type { ViewRecord } from '@/modules/stats/utils/metrics';
 import { isWrappedReady, summarizeYear } from '../summary';
 
 function view(movieId: number, viewedOn: string, extra: Partial<ViewRecord> = {}): ViewRecord {
-  return { movieId, viewedOn, title: `Película ${movieId}`, posterUrl: null, durationMinutes: 100, rating: null, ...extra };
+  return { movieId, viewedOn, title: `Película ${movieId}`, posterUrl: null, durationMinutes: 100, genres: [], rating: null, ...extra };
 }
 
 describe('summarizeYear', () => {

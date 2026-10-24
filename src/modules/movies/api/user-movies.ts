@@ -1,4 +1,5 @@
 import { UNSEEN_EXCLUDED_STATUSES, type StatusKey } from '@/modules/movies/constants/status';
+import { fetchAllRows, fetchByIdChunks } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 export type UserMovieRow = {
@@ -100,24 +101,29 @@ export async function insertUserMovie(
 }
 
 export async function getDisqualifiedMovieIds(userId: string): Promise<number[]> {
-  const { data, error } = await supabase
-    .from('user_movies')
-    .select('movie_id')
-    .eq('user_id', userId)
-    .in('status', UNSEEN_EXCLUDED_STATUSES);
-
-  if (error) throw error;
-  return (data ?? []).map((row) => row.movie_id);
+  const rows = await fetchAllRows<{ movie_id: number }>((from, to) =>
+    supabase
+      .from('user_movies')
+      .select('movie_id', { count: 'exact' })
+      .eq('user_id', userId)
+      .in('status', UNSEEN_EXCLUDED_STATUSES)
+      .order('movie_id')
+      .range(from, to)
+  );
+  return rows.map((row) => row.movie_id);
 }
 
 // Ids de las películas Terminadas; con movieIds se limita a esas películas.
 export async function getWatchedMovieIds(userId: string, movieIds?: number[]): Promise<Set<number>> {
-  if (movieIds?.length === 0) return new Set();
+  const watched = () =>
+    supabase.from('user_movies').select('movie_id', { count: 'exact' }).eq('user_id', userId).eq('status', 'watched');
 
-  let query = supabase.from('user_movies').select('movie_id').eq('user_id', userId).eq('status', 'watched');
-  if (movieIds) query = query.in('movie_id', movieIds);
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return new Set((data ?? []).map((row) => row.movie_id));
+  const rows = movieIds
+    ? await fetchByIdChunks(movieIds, async (ids) => {
+        const { data, error } = await watched().in('movie_id', ids);
+        if (error) throw error;
+        return (data ?? []) as { movie_id: number }[];
+      })
+    : await fetchAllRows<{ movie_id: number }>((from, to) => watched().order('movie_id').range(from, to));
+  return new Set(rows.map((row) => row.movie_id));
 }

@@ -14,10 +14,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
 import { GoldenPoster } from '@/components/golden-poster';
 import { ListsSection } from '@/modules/lists/components/lists-section';
+import { getCatalogMovies } from '@/modules/movies/api/movies';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { getShamePile } from '@/modules/watchlist/api/shame';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
+import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -150,28 +152,27 @@ export default function ExploreScreen() {
       let active = true;
 
       async function loadHome() {
-        const [movieResult, userResult] = await Promise.all([
-          supabase
-            .from('movies')
-            .select('id, title, overview, poster_url')
-            .order('title'),
-          supabase.auth.getUser(),
-        ]);
+        const userResult = await supabase.auth.getUser();
         if (!active) return;
-
-        if (movieResult.error) {
-          Alert.alert('No se pudo cargar el catálogo', movieResult.error.message);
-        } else {
-          setMovies(movieResult.data ?? []);
-        }
 
         const userId = userResult.data.user?.id;
         if (userId) {
-          const [{ data, error }, profile, shame] = await Promise.all([
-            supabase
-              .from('user_movies')
-              .select('movie_id, status, rating, movies(id, title, overview, poster_url)')
-              .eq('user_id', userId),
+          let catalogError: unknown = null;
+          const [catalog, tracked, profile, shame] = await Promise.all([
+            // El catálogo propio (RN-03): la tabla movies tiene también las
+            // películas de otros usuarios.
+            getCatalogMovies(userId).catch((err: unknown) => {
+              catalogError = err;
+              return null;
+            }),
+            fetchAllRows<TrackedMovie>((from, to) =>
+              supabase
+                .from('user_movies')
+                .select('movie_id, status, rating, movies(id, title, overview, poster_url)', { count: 'exact' })
+                .eq('user_id', userId)
+                .order('movie_id')
+                .range(from, to)
+            ).catch(() => null),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
             // El aviso es secundario: si falla, Inicio se muestra igual.
@@ -179,6 +180,8 @@ export default function ExploreScreen() {
           ]);
           if (!active) return;
 
+          if (catalog) setMovies(catalog);
+          else Alert.alert('No se pudo cargar el catálogo', catalogError instanceof Error ? catalogError.message : '');
           setShameCount(shame.length);
 
           // La foto se sube siempre a la misma URL; updated_at cambia con cada
@@ -188,8 +191,7 @@ export default function ExploreScreen() {
           );
           setAvatarLabel(profile?.displayName || userResult.data.user?.email || '');
 
-          if (!error) {
-            const tracked = (data ?? []) as unknown as TrackedMovie[];
+          if (tracked) {
             setWatching(tracked.filter((item) => item.status === 'watching'));
             setRatings(Object.fromEntries(tracked.map((item) => [item.movie_id, item.rating])));
           }
@@ -292,7 +294,7 @@ export default function ExploreScreen() {
         ) : (
           <View style={styles.emptyPanel}>
             <Text style={styles.emptyTitle}>Todavía no hay películas</Text>
-            <Text style={styles.emptyCopy}>Añade títulos desde Supabase para llenar tu cartelera.</Text>
+            <Text style={styles.emptyCopy}>Busca títulos en Descubre y agrégalos a una lista o márcalos para llenar tu cartelera.</Text>
           </View>
         )}
       </ScrollView>

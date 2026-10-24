@@ -26,7 +26,8 @@ function row(movieId: number, viewedOn: string, durationMinutes: number | null, 
   };
 }
 
-function fakeViews(rows: Row[], error: object | null = null) {
+// maxRows imita el max_rows de PostgREST: filas por petición como máximo.
+function fakeViews(rows: Row[], error: object | null = null, maxRows = 1000) {
   const calls: { method: string; args: unknown[] }[] = [];
   const range = { from: '', to: '' };
   const builder = {
@@ -45,7 +46,7 @@ function fakeViews(rows: Row[], error: object | null = null) {
       calls.push({ method: 'range', args: [start, end] });
       if (error) return { data: null, error };
       const inPeriod = rows.filter((r) => r.viewed_on >= range.from && r.viewed_on <= range.to);
-      return { data: inPeriod.slice(start, end + 1), error: null };
+      return { data: inPeriod.slice(start, Math.min(end + 1, start + maxRows)), error: null, count: inPeriod.length };
     },
   };
   function record(method: string, args: unknown[]) {
@@ -90,6 +91,13 @@ describe('consulta', () => {
       [1000, 1999],
       [2000, 2999],
     ]);
+  });
+
+  it('no se corta si el servidor devuelve menos filas que la página', async () => {
+    const many = Array.from({ length: 1200 }, (_, i) => row(i, '2026-05-01', 1, null));
+    const calls = fakeViews(many, null, 500);
+    await expect(minutesWatched(USER, monthPeriod(2026, 5))).resolves.toBe(1200);
+    expect(calls.filter((call) => call.method === 'range')).toHaveLength(3);
   });
 
   it('propaga el error de Supabase', async () => {

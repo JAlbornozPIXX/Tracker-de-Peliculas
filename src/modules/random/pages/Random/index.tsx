@@ -25,10 +25,11 @@ export default function Random() {
   const [genres, setGenres] = useState<string[]>([]);
 
   useEffect(() => {
-    getDistinctGenres()
+    if (!userId) return;
+    getDistinctGenres(userId)
       .then(setGenres)
       .catch((err) => Alert.alert('No se pudieron cargar los géneros', err instanceof Error ? err.message : ''));
-  }, []);
+  }, [userId]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

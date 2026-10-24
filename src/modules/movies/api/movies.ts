@@ -1,4 +1,5 @@
 import type { MovieDetails, MovieResultType } from '@/modules/movies/api/tmdb';
+import { fetchAllRows, fetchByIdChunks } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 export type MovieRow = {
@@ -68,12 +69,17 @@ export async function ensureMovieFromTmdb(details: MovieDetails): Promise<number
   return data.id;
 }
 
-export async function getDistinctGenres(): Promise<string[]> {
-  const { data, error } = await supabase.from('movies').select('genre');
-  if (error) throw error;
+// Géneros de TheMovieDB de las películas del catálogo propio (RN-03): la
+// tabla movies es compartida y tiene también las de otros usuarios.
+export async function getDistinctGenres(userId: string): Promise<string[]> {
+  const rows = await fetchByIdChunks([...(await getCatalogMovieIds(userId))], async (ids) => {
+    const { data, error } = await supabase.from('movies').select('genre').in('id', ids);
+    if (error) throw error;
+    return (data ?? []) as { genre: string[] | null }[];
+  });
 
   const genres = new Set<string>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     for (const g of row.genre ?? []) genres.add(g);
   }
   return Array.from(genres).sort();
@@ -85,23 +91,36 @@ export type RouletteFilters = {
 };
 
 export async function getMoviesByIds(movieIds: number[]): Promise<MovieRow[]> {
-  if (movieIds.length === 0) return [];
-  const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).in('id', movieIds);
-  if (error) throw error;
-  return data ?? [];
+  return fetchByIdChunks(movieIds, async (ids) => {
+    const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).in('id', ids);
+    if (error) throw error;
+    return (data ?? []) as MovieRow[];
+  });
 }
 
 // RN-03: el catálogo del usuario son las películas con seguimiento
 // (user_movies) más las que están en alguna de sus listas.
 async function getCatalogMovieIds(userId: string): Promise<Set<number>> {
   const [tracked, listed] = await Promise.all([
-    supabase.from('user_movies').select('movie_id').eq('user_id', userId),
-    supabase.from('list_movies').select('movie_id, lists!inner(user_id)').eq('lists.user_id', userId),
+    fetchAllRows<{ movie_id: number }>((from, to) =>
+      supabase
+        .from('user_movies')
+        .select('movie_id', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('movie_id')
+        .range(from, to)
+    ),
+    fetchAllRows<{ movie_id: number }>((from, to) =>
+      supabase
+        .from('list_movies')
+        .select('movie_id, lists!inner(user_id)', { count: 'exact' })
+        .eq('lists.user_id', userId)
+        .order('list_id')
+        .order('movie_id')
+        .range(from, to)
+    ),
   ]);
-
-  if (tracked.error) throw tracked.error;
-  if (listed.error) throw listed.error;
-  return new Set([...(tracked.data ?? []), ...(listed.data ?? [])].map((row) => row.movie_id));
+  return new Set([...tracked, ...listed].map((row) => row.movie_id));
 }
 
 // El catálogo propio por título; la tabla movies es compartida por todos.
@@ -121,19 +140,20 @@ export async function getEligibleMovies(
 ): Promise<MovieRow[]> {
   const excluded = new Set(excludedMovieIds);
   const catalogIds = [...(await getCatalogMovieIds(userId))].filter((id) => !excluded.has(id));
-  if (catalogIds.length === 0) return [];
 
-  let query = supabase.from('movies').select(MOVIE_COLUMNS).in('id', catalogIds);
+  return fetchByIdChunks(catalogIds, async (ids) => {
+    let query = supabase.from('movies').select(MOVIE_COLUMNS).in('id', ids);
 
-  if (filters.genre) {
-    query = query.contains('genre', [filters.genre]);
-  }
+    if (filters.genre) {
+      query = query.contains('genre', [filters.genre]);
+    }
 
-  if (filters.maxDurationMinutes != null) {
-    query = query.lte('duration_minutes', filters.maxDurationMinutes);
-  }
+    if (filters.maxDurationMinutes != null) {
+      query = query.lte('duration_minutes', filters.maxDurationMinutes);
+    }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as MovieRow[];
+  });
 }

@@ -89,7 +89,7 @@ export default function Lists() {
       Promise.all([
         getListsWithMovies(userId),
         getWatchedMovieIds(userId).catch(() => null),
-        getDistinctGenres().catch(() => null),
+        getDistinctGenres(userId).catch(() => null),
       ])
         .then(async ([listData, watched, genreData]) => {
           if (!active) return;

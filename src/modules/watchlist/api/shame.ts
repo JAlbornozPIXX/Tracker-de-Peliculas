@@ -2,6 +2,7 @@ import { addMovieToList, createList, deleteList, removeMovieFromList } from '@/m
 import { DEFAULT_LIST_KIND } from '@/modules/lists/constants/kinds';
 import type { StatusKey } from '@/modules/movies/constants/status';
 import { shameCutoff, shamePile } from '@/modules/watchlist/utils/shame';
+import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 export type ShameMovie = {
@@ -22,16 +23,18 @@ type WatchlistRowData = {
  * tarde", según status_changed_at (updated_at cambia al editar nota o estrellas).
  */
 export async function getShamePile(userId: string, now = new Date()): Promise<ShameMovie[]> {
-  const { data, error } = await supabase
-    .from('user_movies')
-    .select('status_changed_at, movies(id, title, poster_url, release_date)')
-    .eq('user_id', userId)
-    .eq('status', 'watchlist')
-    .lte('status_changed_at', shameCutoff(now).toISOString());
+  const data = await fetchAllRows<WatchlistRowData>((from, to) =>
+    supabase
+      .from('user_movies')
+      .select('status_changed_at, movies(id, title, poster_url, release_date)', { count: 'exact' })
+      .eq('user_id', userId)
+      .eq('status', 'watchlist')
+      .lte('status_changed_at', shameCutoff(now).toISOString())
+      .order('movie_id')
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  const rows = ((data ?? []) as unknown as WatchlistRowData[]).flatMap(({ status_changed_at, movies: movie }) =>
+  const rows = data.flatMap(({ status_changed_at, movies: movie }) =>
     movie ? [{ status: 'watchlist' as const, statusChangedAt: status_changed_at, movie }] : []
   );
   return shamePile(rows, now).map(({ movie, days }) => ({
