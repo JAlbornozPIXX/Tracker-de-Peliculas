@@ -136,7 +136,9 @@ export function ChallengeForm({
       statusBarTranslucent
       animationType="slide"
       visible
-      onRequestClose={() => !saving && onClose()}>
+      onRequestClose={() => {
+        if (!saving) onClose();
+      }}>
       <Pressable accessibilityLabel="Cerrar" disabled={saving} onPress={onClose} style={styles.backdrop} />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
         <Text style={styles.sheetTitle}>Nuevo reto</Text>

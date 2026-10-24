@@ -161,7 +161,9 @@ export function ReactionPicker({
         statusBarTranslucent
         animationType="fade"
         visible={dialog !== 'none'}
-        onRequestClose={() => !saving && setDialog('none')}>
+        onRequestClose={() => {
+          if (!saving) setDialog('none');
+        }}>
         <Pressable
           accessibilityLabel="Cerrar"
           disabled={saving}

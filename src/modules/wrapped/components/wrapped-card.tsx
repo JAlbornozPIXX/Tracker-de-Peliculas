@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type ViewInstance } from 'react-native';
 
 import { GoldenPoster } from '@/components/golden-poster';
 import { formatMinutes, formatRating, monthName } from '@/modules/stats/utils/format';
@@ -47,7 +47,7 @@ function RatedPick({
 }
 
 //Tarjeta anual que se exporta como imagen: ancho fijo para que la imagen salga igual en cualquier pantalla
-export function WrappedCard({ summary, ref }: { summary: WrappedSummary; ref?: Ref<View> }) {
+export function WrappedCard({ summary, ref }: { summary: WrappedSummary; ref?: Ref<ViewInstance> }) {
   return (
     <View ref={ref} collapsable={false} style={styles.card}>
       <View style={styles.glow} />

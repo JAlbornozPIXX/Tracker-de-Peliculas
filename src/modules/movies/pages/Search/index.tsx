@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputInstance,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,7 +32,7 @@ const MIN_QUERY_LENGTH = 2;
 export default function Search() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -250,7 +251,7 @@ export default function Search() {
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.6}
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator color="#B94DFF" style={styles.footerSpinner} /> : null
+          loadingMore ? <ActivityIndicator color="#B94DFF" style={styles.footerSpinner} /> : undefined
         }
         ListEmptyComponent={
           loading ? (
