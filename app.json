@@ -39,7 +39,8 @@
         {
           "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
