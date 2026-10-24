@@ -1,6 +1,6 @@
 import { getListWithMovies } from '@/modules/lists/api/lists';
 import {
-  getAllMovies,
+  getCatalogMovies,
   getEligibleMovies,
   getMoviesByIds,
   type MovieRow,
@@ -21,8 +21,8 @@ export async function getListDrawCandidates(listId: number): Promise<MovieRow[]>
   return getMoviesByIds(list?.movies.map((movie) => movie.id) ?? []);
 }
 
-// Sorteo simple por géneros: películas del catálogo con todos los géneros.
-// A diferencia de la ruleta, no se limita a las películas con seguimiento.
-export async function getGenreDrawCandidates(genres: string[]): Promise<MovieRow[]> {
-  return filterByGenres(await getAllMovies(), genres);
+// Sorteo simple por géneros: películas del catálogo propio (RN-03: nunca las
+// de otros usuarios) con todos los géneros elegidos.
+export async function getGenreDrawCandidates(userId: string, genres: string[]): Promise<MovieRow[]> {
+  return filterByGenres(await getCatalogMovies(userId), genres);
 }

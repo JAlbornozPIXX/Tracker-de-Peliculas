@@ -84,13 +84,6 @@ export type RouletteFilters = {
   maxDurationMinutes: number | null;
 };
 
-// Todo el catálogo, el mismo que muestra la sección Catálogo de Inicio.
-export async function getAllMovies(): Promise<MovieRow[]> {
-  const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).order('title');
-  if (error) throw error;
-  return data ?? [];
-}
-
 export async function getMoviesByIds(movieIds: number[]): Promise<MovieRow[]> {
   if (movieIds.length === 0) return [];
   const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).in('id', movieIds);
@@ -109,6 +102,12 @@ async function getCatalogMovieIds(userId: string): Promise<Set<number>> {
   if (tracked.error) throw tracked.error;
   if (listed.error) throw listed.error;
   return new Set([...(tracked.data ?? []), ...(listed.data ?? [])].map((row) => row.movie_id));
+}
+
+// El catálogo propio por título; la tabla movies es compartida por todos.
+export async function getCatalogMovies(userId: string): Promise<MovieRow[]> {
+  const movies = await getMoviesByIds([...(await getCatalogMovieIds(userId))]);
+  return movies.sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /**
