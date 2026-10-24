@@ -6,6 +6,7 @@ import {
   isRetryableError,
   isRetryableStatus,
   mergeWrite,
+  pendingAutoViewDates,
   PendingWrite,
 } from '../pending-writes';
 
@@ -38,6 +39,15 @@ describe('mergeWrite', () => {
       status: at,
       rating: at,
     });
+  });
+
+  it('una vista automática por película y día', () => {
+    let queue = mergeWrite([], { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-20', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-20', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-21', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'user_movie', movieId: 1, fields: { status: 'watched' }, changedAt: at });
+    expect(queue).toHaveLength(3);
+    expect(pendingAutoViewDates(queue)).toEqual(['2026-10-21', '2026-10-20']);
   });
 
   it('en un calificador se queda con el último estado', () => {

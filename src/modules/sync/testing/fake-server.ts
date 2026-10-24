@@ -5,6 +5,7 @@ import type { SyncStorage } from '@/modules/sync/utils/sync-queue';
 // Como user_movies: cada campo con la hora de su último cambio.
 export type ServerRow = UserMovieRow & { changedAt: Record<UserMovieField, string> };
 export type ServerReaction = { selected: boolean; changedAt: string };
+export type ServerView = { movieId: number; viewedOn: string; source: 'manual' | 'auto' };
 
 const OFFLINE = { status: 0, error: { message: 'TypeError: Network request failed', details: '', hint: '', code: '' } };
 const OK = { status: 200, error: null };
@@ -23,6 +24,7 @@ export function createFakeServer() {
   const rows = new Map<number, ServerRow>();
   // Clave `${movieId}:${reactionId}`; desmarcar deja selected = false, como en la base.
   const reactions = new Map<string, ServerReaction>();
+  const views: ServerView[] = [];
   const state = { online: true, signedIn: true, calls: 0 };
 
   function offline<T extends object>(extra: T): (RemoteResult & T) | null {
@@ -85,13 +87,21 @@ export function createFakeServer() {
       reactions.set(`${movieId}:${reactionId}`, { selected: true, changedAt });
       return OK;
     },
+    async addAutoViewIfNone(_userId, movieId, viewedOn) {
+      const down = offline({});
+      if (down) return down;
+      if (!views.some((view) => view.movieId === movieId && view.viewedOn === viewedOn)) {
+        views.push({ movieId, viewedOn, source: 'auto' });
+      }
+      return OK;
+    },
   };
 
   // Calificadores marcados, para comparar con lo que muestra la ficha.
   const selectedReactions = () =>
     [...reactions].filter(([, reaction]) => reaction.selected).map(([key]) => key);
 
-  return { remote, rows, reactions, selectedReactions, state };
+  return { remote, rows, reactions, selectedReactions, views, state };
 }
 
 /** AsyncStorage en memoria: sobrevive a recrear la cola, como al reabrir la app. */

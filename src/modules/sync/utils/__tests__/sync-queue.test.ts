@@ -227,6 +227,40 @@ describe('calificadores: gana el más reciente', () => {
   });
 });
 
+describe('vista automática sin red', () => {
+  const today = '2026-10-21';
+
+  it('pasar a Terminada sin red guarda la vista en el teléfono y la sube al volver la red', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.state.online = false;
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { status: 'watched' }, changedAt: '2026-10-21T10:00:00.000Z' });
+    await expect(
+      queue.save(USER, { kind: 'auto_view', movieId: MOVIE, viewedOn: today, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('pending');
+    expect(queue.pendingAutoViewDates(MOVIE)).toEqual([today]);
+
+    // Volver a marcar Terminada el mismo día no agrega otra.
+    await queue.save(USER, { kind: 'auto_view', movieId: MOVIE, viewedOn: today, changedAt: '2026-10-21T10:05:00.000Z' });
+    expect(queue.pendingCount()).toBe(2);
+
+    server.state.online = true;
+    await queue.flush();
+    expect(server.rows.get(MOVIE)?.status).toBe('watched');
+    expect(server.views).toEqual([{ movieId: MOVIE, viewedOn: today, source: 'auto' }]);
+    expect(queue.pendingAutoViewDates(MOVIE)).toEqual([]);
+  });
+
+  it('no suma otra si ese día ya hay una vista', async () => {
+    const { server, open } = setup();
+    server.views.push({ movieId: MOVIE, viewedOn: today, source: 'manual' });
+    await expect(
+      open().save(USER, { kind: 'auto_view', movieId: MOVIE, viewedOn: today, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('saved');
+    expect(server.views).toHaveLength(1);
+  });
+});
+
 describe('base sin actualizar', () => {
   it('si falta una columna nueva de schema.sql, el cambio queda pendiente en vez de perderse', async () => {
     const { server, open } = setup();

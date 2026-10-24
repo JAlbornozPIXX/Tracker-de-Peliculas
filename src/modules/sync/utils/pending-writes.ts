@@ -12,16 +12,25 @@ export type { ChangedAtByField, UserMovieField, UserMovieFields };
  * changedAt es el momento del cambio en el teléfono: se compara con la hora
  * del mismo dato en el servidor y gana el más reciente. En user_movies,
  * fieldChangedAt guarda la hora de cada campo cuando se combinan cambios
- * hechos en momentos distintos.
+ * hechos en momentos distintos. auto_view es la vista que se registra al
+ * pasar a Terminada (viewedOn es el día local del teléfono).
  */
 export type PendingWrite =
   | { kind: 'user_movie'; movieId: number; fields: UserMovieFields; changedAt: string; fieldChangedAt?: ChangedAtByField }
-  | { kind: 'reaction'; movieId: number; reactionId: number; selected: boolean; changedAt: string };
+  | { kind: 'reaction'; movieId: number; reactionId: number; selected: boolean; changedAt: string }
+  | { kind: 'auto_view'; movieId: number; viewedOn: string; changedAt: string };
 
 type UserMovieWrite = Extract<PendingWrite, { kind: 'user_movie' }>;
 
 export function writeKey(write: PendingWrite): string {
-  return write.kind === 'user_movie' ? `user_movie:${write.movieId}` : `reaction:${write.movieId}:${write.reactionId}`;
+  switch (write.kind) {
+    case 'user_movie':
+      return `user_movie:${write.movieId}`;
+    case 'reaction':
+      return `reaction:${write.movieId}:${write.reactionId}`;
+    case 'auto_view':
+      return `auto_view:${write.movieId}:${write.viewedOn}`;
+  }
 }
 
 // Hora de cada campo pendiente. Las escrituras guardadas antes de que
@@ -37,7 +46,8 @@ export function changedAtByField(write: UserMovieWrite): ChangedAtByField {
 /**
  * Agrega una escritura a la cola. Si ya había una pendiente para lo mismo, se
  * combinan: en user_movies se juntan los campos (el más nuevo pisa) y cada uno
- * conserva su hora, y en un calificador basta el último estado.
+ * conserva su hora; en un calificador basta el último estado, y una vista
+ * automática del mismo día ya está en la cola.
  */
 export function mergeWrite(queue: PendingWrite[], next: PendingWrite): PendingWrite[] {
   const key = writeKey(next);
@@ -105,4 +115,11 @@ export function applyPendingToWatchedIds(watchedIds: ReadonlySet<number>, writes
     else next.delete(write.movieId);
   }
   return next;
+}
+
+// Días de las vistas automáticas que todavía no se suben, de más reciente a más antiguo.
+export function pendingAutoViewDates(writes: PendingWrite[]): string[] {
+  return writes
+    .flatMap((write) => (write.kind === 'auto_view' ? [write.viewedOn] : []))
+    .sort((a, b) => b.localeCompare(a));
 }

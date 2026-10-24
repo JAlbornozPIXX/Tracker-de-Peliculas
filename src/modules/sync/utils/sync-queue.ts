@@ -1,5 +1,5 @@
 import { ApplyOutcome, applyWrite, RemoteError, SyncRemote } from '@/modules/sync/utils/apply-write';
-import { mergeWrite, PendingWrite, writeKey } from '@/modules/sync/utils/pending-writes';
+import { mergeWrite, PendingWrite, pendingAutoViewDates, writeKey } from '@/modules/sync/utils/pending-writes';
 
 export type SyncStorage = {
   getItem(key: string): Promise<string | null>;
@@ -153,6 +153,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
     flush,
     pendingFor,
     hasPending: (movieId: number) => queue.some((write) => write.movieId === movieId),
+    /** Días de las vistas automáticas de la película que todavía no se suben. */
+    pendingAutoViewDates: (movieId: number) => pendingAutoViewDates(queue.filter((write) => write.movieId === movieId)),
     pendingCount: () => queue.length,
     subscribe(listener: () => void) {
       listeners.add(listener);

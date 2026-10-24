@@ -83,15 +83,19 @@ export function ViewsSection({
               <Text style={styles.rowText}>
                 {formatViewDate(view.viewedOn)}
                 {view.source === 'auto' && <Text style={styles.rowTag}> · al terminar</Text>}
+                {view.pending && <Text style={styles.rowTag}> · pendiente de sincronizar</Text>}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Borrar la vista del ${formatViewDate(view.viewedOn)}`}
-                hitSlop={8}
-                onPress={() => openDelete(view)}
-                style={styles.deleteButton}>
-                <Text style={styles.deleteIcon}>✕</Text>
-              </Pressable>
+              {/* Una vista pendiente todavía no está en el servidor: se podrá borrar al subirse. */}
+              {!view.pending && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Borrar la vista del ${formatViewDate(view.viewedOn)}`}
+                  hitSlop={8}
+                  onPress={() => openDelete(view)}
+                  style={styles.deleteButton}>
+                  <Text style={styles.deleteIcon}>✕</Text>
+                </Pressable>
+              )}
             </View>
           ))}
         </View>
@@ -164,7 +168,8 @@ export function ViewsSection({
 const styles = StyleSheet.create({
   summary: { color: '#D5D0D8', fontSize: 14, fontWeight: '700' },
   list: { marginTop: 10, borderRadius: 15, borderWidth: 1, borderColor: '#27222D', backgroundColor: '#15131A', overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#27222D' },
+  // minHeight: la fila pendiente, sin botón de borrar, queda del mismo alto.
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#27222D' },
   rowText: { color: '#F4F4F5', fontSize: 13, fontWeight: '600' },
   rowTag: { color: '#8F8795', fontWeight: '500' },
   deleteButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

@@ -46,6 +46,8 @@ export type SyncRemote = {
   ): Promise<RemoteResult & { applied: boolean }>;
   movieReactionExists(userId: string, movieId: number, reactionId: number): Promise<RemoteResult & { exists: boolean }>;
   insertMovieReaction(userId: string, movieId: number, reactionId: number, changedAt: string): Promise<RemoteResult>;
+  /** Registra la vista automática de ese día, salvo que ya haya una vista (manual o automática). */
+  addAutoViewIfNone(userId: string, movieId: number, viewedOn: string): Promise<RemoteResult>;
 };
 
 /**
@@ -131,5 +133,15 @@ async function applyReaction(userId: string, write: ReactionWrite, remote: SyncR
 }
 
 export async function applyWrite(userId: string, write: PendingWrite, remote: SyncRemote): Promise<ApplyOutcome> {
-  return write.kind === 'reaction' ? applyReaction(userId, write, remote) : applyUserMovie(userId, write, remote);
+  switch (write.kind) {
+    case 'user_movie':
+      return applyUserMovie(userId, write, remote);
+    case 'reaction':
+      return applyReaction(userId, write, remote);
+    case 'auto_view': {
+      // Una vista es un hecho, no un valor que se reemplaza: no compite por fecha.
+      const result = await remote.addAutoViewIfNone(userId, write.movieId, write.viewedOn);
+      return result.error ? failure(result) : { type: 'saved' };
+    }
+  }
 }

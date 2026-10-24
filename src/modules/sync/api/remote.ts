@@ -1,5 +1,6 @@
 import { insertMovieReaction, movieReactionExists, updateMovieReactionIfOlder } from '@/modules/movies/api/reactions';
 import { insertUserMovie, updateUserMovieFieldIfOlder, userMovieExists } from '@/modules/movies/api/user-movies';
+import { addAutoViewIfNone } from '@/modules/movies/api/views';
 import type { SyncRemote } from '@/modules/sync/utils/apply-write';
 import { supabase } from '@/utils/supabase';
 
@@ -12,4 +13,5 @@ export const supabaseRemote: SyncRemote = {
   updateMovieReactionIfOlder,
   movieReactionExists,
   insertMovieReaction,
+  addAutoViewIfNone,
 };
