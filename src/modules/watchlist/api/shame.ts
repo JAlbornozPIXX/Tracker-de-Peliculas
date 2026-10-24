@@ -53,13 +53,16 @@ export async function keepInWatchlist(userId: string, movieId: number, now = new
   if (error) throw error;
 }
 
-// Fila completa de user_movies, para que "Deshacer" la deje exactamente igual.
+// Fila completa de user_movies, para que "Deshacer" la deje exactamente igual
+// (incluidas las horas de cada campo que usa la sincronización).
 export type TrackingSnapshot = {
   status: StatusKey;
   rating: number | null;
   notes: string | null;
   updated_at: string;
   status_changed_at: string;
+  rating_changed_at: string;
+  notes_changed_at: string;
 };
 
 /**
@@ -74,7 +77,7 @@ export async function removeTracking(userId: string, movieId: number): Promise<T
     .delete()
     .eq('user_id', userId)
     .eq('movie_id', movieId)
-    .select('status, rating, notes, updated_at, status_changed_at')
+    .select('status, rating, notes, updated_at, status_changed_at, rating_changed_at, notes_changed_at')
     .single();
   if (error) throw error;
   return data;

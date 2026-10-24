@@ -155,7 +155,8 @@ export default function MovieDetail() {
     savedNotes.current = next;
     setNoteSaveState('saving');
     saveUserMovie(userId, internalId, { notes: next })
-      // Si quedó pendiente lo muestra el indicador de sincronización.
+      // Si quedó pendiente lo muestra el indicador de sincronización; si ganó
+      // un cambio más reciente, subscribeDiscarded carga la nota del servidor.
       .then((result) => setNoteSaveState(result === 'saved' ? 'saved' : 'idle'))
       .catch((err) => {
         if (savedNotes.current === next) savedNotes.current = previous;

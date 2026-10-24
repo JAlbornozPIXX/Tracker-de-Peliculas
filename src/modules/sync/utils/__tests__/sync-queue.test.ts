@@ -1,5 +1,5 @@
 import { createSyncQueue } from '../sync-queue';
-import { createFakeServer, createFakeStorage } from '@/modules/sync/testing/fake-server';
+import { createFakeServer, createFakeStorage, serverRow } from '@/modules/sync/testing/fake-server';
 
 const USER = 'user-1';
 const MOVIE = 7;
@@ -63,7 +63,7 @@ describe('sin red', () => {
 
     server.state.online = true;
     await queue.flush();
-    expect([...server.reactions]).toEqual([`${MOVIE}:1`]);
+    expect(server.selectedReactions()).toEqual([`${MOVIE}:1`]);
   });
 
   it('con red se guarda al instante', async () => {
@@ -75,7 +75,7 @@ describe('sin red', () => {
   });
 });
 
-describe('gana el más reciente según updated_at', () => {
+describe('gana el más reciente', () => {
   it('si el servidor tiene un cambio más nuevo, el pendiente se descarta', async () => {
     const { server, open } = setup();
     const queue = open();
@@ -86,7 +86,7 @@ describe('gana el más reciente según updated_at', () => {
     await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { notes: 'desde el teléfono' }, changedAt: '2026-10-21T10:00:00.000Z' });
 
     // Mientras tanto, otro dispositivo guardó más tarde.
-    server.rows.set(MOVIE, { status: 'watched', rating: 5, notes: 'desde el otro', updatedAt: '2026-10-21T11:00:00.000Z' });
+    server.rows.set(MOVIE, serverRow({ status: 'watched', rating: 5, notes: 'desde el otro' }, '2026-10-21T11:00:00.000Z'));
 
     server.state.online = true;
     await queue.flush();
@@ -99,14 +99,148 @@ describe('gana el más reciente según updated_at', () => {
   it('si el pendiente es más nuevo que el servidor, se aplica', async () => {
     const { server, open } = setup();
     const queue = open();
-    server.rows.set(MOVIE, { status: 'watching', rating: null, notes: 'vieja', updatedAt: '2026-10-21T09:00:00.000Z' });
+    server.rows.set(MOVIE, serverRow({ status: 'watching', rating: null, notes: 'vieja' }, '2026-10-21T09:00:00.000Z'));
 
     server.state.online = false;
     await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { notes: 'nueva' }, changedAt: '2026-10-21T10:00:00.000Z' });
     server.state.online = true;
     await queue.flush();
 
-    expect(server.rows.get(MOVIE)).toMatchObject({ status: 'watching', notes: 'nueva', updatedAt: '2026-10-21T10:00:00.000Z' });
+    expect(server.rows.get(MOVIE)).toMatchObject({ status: 'watching', notes: 'nueva' });
+    expect(server.rows.get(MOVIE)?.changedAt.notes).toBe('2026-10-21T10:00:00.000Z');
+  });
+});
+
+describe('gana el más reciente, campo por campo', () => {
+  it('un cambio viejo no pisa uno más nuevo del servidor aunque se junte con otro más nuevo', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    const discarded = jest.fn();
+    queue.subscribeDiscarded(discarded);
+    server.rows.set(MOVIE, serverRow({ status: 'watched', rating: 3, notes: null }, '2026-10-21T09:00:00.000Z'));
+
+    server.state.online = false;
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { rating: 2 }, changedAt: '2026-10-21T10:00:00.000Z' });
+    // Otro dispositivo cambia las estrellas después; luego en el teléfono se escribe la nota.
+    server.rows.set(
+      MOVIE,
+      serverRow({ status: 'watched', rating: 5, notes: null }, '2026-10-21T09:00:00.000Z', { rating: '2026-10-21T10:10:00.000Z' })
+    );
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { notes: 'la vi de nuevo' }, changedAt: '2026-10-21T10:20:00.000Z' });
+
+    server.state.online = true;
+    await queue.flush();
+
+    expect(server.rows.get(MOVIE)).toMatchObject({ rating: 5, notes: 'la vi de nuevo' });
+    expect(queue.hasPending(MOVIE)).toBe(false);
+    // La ficha vuelve a leer: las estrellas que mostraba no quedaron en el servidor.
+    expect(discarded).toHaveBeenCalledWith(MOVIE);
+  });
+
+  it('un cambio más nuevo en otro campo no descarta el pendiente', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.rows.set(MOVIE, serverRow({ status: 'watched', rating: 3, notes: null }, '2026-10-21T09:00:00.000Z'));
+
+    server.state.online = false;
+    await queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { rating: 4.25 }, changedAt: '2026-10-21T10:00:00.000Z' });
+    // Mientras tanto, otro dispositivo escribió la nota.
+    server.rows.set(
+      MOVIE,
+      serverRow({ status: 'watched', rating: 3, notes: 'desde el otro' }, '2026-10-21T09:00:00.000Z', { notes: '2026-10-21T10:10:00.000Z' })
+    );
+
+    server.state.online = true;
+    await queue.flush();
+
+    expect(server.rows.get(MOVIE)).toMatchObject({ rating: 4.25, notes: 'desde el otro' });
+  });
+
+  it('save() avisa cuando el servidor tenía un cambio más reciente', async () => {
+    const { server, open } = setup();
+    server.rows.set(MOVIE, serverRow({ status: 'watched', rating: 3, notes: 'nueva' }, '2026-10-21T11:00:00.000Z'));
+    await expect(
+      open().save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { notes: 'vieja' }, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('superseded');
+    expect(server.rows.get(MOVIE)?.notes).toBe('nueva');
+  });
+
+  it('los cambios que guardó la versión anterior de la app siguen subiendo', async () => {
+    const { server, storage, open } = setup();
+    server.rows.set(MOVIE, serverRow({ status: 'watching', rating: null, notes: null }, '2026-10-21T09:00:00.000Z'));
+    // Sin fieldChangedAt: todos los campos toman changedAt.
+    storage.data.set(
+      `cineteca:pending-writes:v1:${USER}`,
+      JSON.stringify([
+        { kind: 'user_movie', movieId: MOVIE, fields: { status: 'watched', rating: 4 }, changedAt: '2026-10-21T10:00:00.000Z' },
+      ])
+    );
+
+    const queue = open();
+    await queue.setUser(USER);
+    await queue.flush();
+
+    expect(queue.hasPending(MOVIE)).toBe(false);
+    expect(server.rows.get(MOVIE)).toMatchObject({ status: 'watched', rating: 4 });
+  });
+});
+
+describe('calificadores: gana el más reciente', () => {
+  const key = `${MOVIE}:1`;
+
+  it('desmarcar sin red no gana sobre un marcado más reciente de otro dispositivo', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.reactions.set(key, { selected: true, changedAt: '2026-10-21T09:00:00.000Z' });
+
+    server.state.online = false;
+    await queue.save(USER, { kind: 'reaction', movieId: MOVIE, reactionId: 1, selected: false, changedAt: '2026-10-21T10:00:00.000Z' });
+    // El otro dispositivo lo desmarcó y lo volvió a marcar después.
+    server.reactions.set(key, { selected: true, changedAt: '2026-10-21T10:10:00.000Z' });
+
+    server.state.online = true;
+    await queue.flush();
+    expect(server.reactions.get(key)).toEqual({ selected: true, changedAt: '2026-10-21T10:10:00.000Z' });
+  });
+
+  it('marcar sin red gana sobre un desmarcado más viejo', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.reactions.set(key, { selected: false, changedAt: '2026-10-21T09:00:00.000Z' });
+
+    server.state.online = false;
+    await queue.save(USER, { kind: 'reaction', movieId: MOVIE, reactionId: 1, selected: true, changedAt: '2026-10-21T10:00:00.000Z' });
+    server.state.online = true;
+    await queue.flush();
+
+    expect(server.selectedReactions()).toEqual([key]);
+  });
+
+  it('desmarcar deja la marca como no seleccionada, con su hora, en vez de borrarla', async () => {
+    const { server, open } = setup();
+    server.reactions.set(key, { selected: true, changedAt: '2026-10-21T09:00:00.000Z' });
+    await expect(
+      open().save(USER, { kind: 'reaction', movieId: MOVIE, reactionId: 1, selected: false, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('saved');
+    expect(server.reactions.get(key)).toEqual({ selected: false, changedAt: '2026-10-21T10:00:00.000Z' });
+    expect(server.selectedReactions()).toEqual([]);
+  });
+});
+
+describe('base sin actualizar', () => {
+  it('si falta una columna nueva de schema.sql, el cambio queda pendiente en vez de perderse', async () => {
+    const { server, open } = setup();
+    const queue = open();
+    server.remote.updateUserMovieFieldIfOlder = async () => ({
+      status: 400,
+      applied: false,
+      error: { message: "Could not find the 'rating_changed_at' column of 'user_movies' in the schema cache", code: 'PGRST204' },
+    });
+
+    await expect(
+      queue.save(USER, { kind: 'user_movie', movieId: MOVIE, fields: { rating: 4 }, changedAt: '2026-10-21T10:00:00.000Z' })
+    ).resolves.toBe('pending');
+    expect(queue.hasPending(MOVIE)).toBe(true);
   });
 });
 
@@ -114,7 +248,7 @@ describe('rechazos del servidor', () => {
   it('no se reintentan y save() lanza el mensaje', async () => {
     const { server, open } = setup();
     const queue = open();
-    server.remote.updateUserMovieIfOlder = async () => ({
+    server.remote.updateUserMovieFieldIfOlder = async () => ({
       status: 400,
       applied: false,
       error: { message: 'violates check constraint', details: '', hint: '', code: '23514' },
@@ -146,7 +280,7 @@ describe('sin sesión válida', () => {
   it('no sube ni descarta los pendientes hasta que vuelve la sesión', async () => {
     const { server, open } = setup();
     const queue = open();
-    server.rows.set(MOVIE, { status: 'watched', rating: 3, notes: null, updatedAt: '2026-10-21T09:00:00.000Z' });
+    server.rows.set(MOVIE, serverRow({ status: 'watched', rating: 3, notes: null }, '2026-10-21T09:00:00.000Z'));
 
     // El token venció y no se pudo renovar: las peticiones saldrían como anónimas.
     server.state.signedIn = false;

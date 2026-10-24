@@ -19,7 +19,7 @@ export async function getRankedMovies(userId: string): Promise<RankedMovie[]> {
       .eq('user_id', userId)
       .not('rating', 'is', null),
     supabase.from('movie_views').select('movie_id, viewed_on').eq('user_id', userId),
-    supabase.from('user_movie_reactions').select('movie_id, reaction_id').eq('user_id', userId),
+    supabase.from('user_movie_reactions').select('movie_id, reaction_id').eq('user_id', userId).eq('selected', true),
     getListMemberships(),
   ]);
 

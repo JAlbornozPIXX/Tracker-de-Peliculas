@@ -6,7 +6,8 @@ export type SyncStorage = {
   setItem(key: string, value: string): Promise<void>;
 };
 
-export type SaveResult = 'saved' | 'pending';
+// superseded: el servidor ya tenía un cambio más reciente de ese dato y se quedó con ese.
+export type SaveResult = 'saved' | 'pending' | 'superseded';
 
 const storageKey = (userId: string) => `cineteca:pending-writes:v1:${userId}`;
 
@@ -35,6 +36,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
   const discardListeners = new Set<(movieId: number) => void>();
   // Rechazos del servidor, para que save() los devuelva como error a la UI.
   const rejections = new WeakMap<PendingWrite, RemoteError>();
+  // Escrituras que perdieron contra un cambio más reciente del servidor.
+  const superseded = new WeakSet<PendingWrite>();
 
   function notify() {
     listeners.forEach((listener) => listener());
@@ -91,6 +94,7 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
       if (outcome.type === 'retry') return;
 
       if (outcome.type === 'rejected') rejections.set(write, outcome.error);
+      if (outcome.type === 'superseded') superseded.add(write);
       // Por identidad: si se combinó con un cambio nuevo mientras subía, ese queda.
       queue = queue.filter((entry) => entry !== write);
       notify();
@@ -119,7 +123,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
 
   /**
    * Guarda el cambio en el teléfono e intenta subirlo. Devuelve 'pending' si
-   * quedó para después; lanza el error si el servidor lo rechazó.
+   * quedó para después y 'superseded' si el servidor tenía uno más reciente;
+   * lanza el error si el servidor lo rechazó.
    */
   async function save(forUser: string, write: PendingWrite): Promise<SaveResult> {
     await setUser(forUser);
@@ -133,7 +138,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
     const error = rejections.get(entry);
     // Supabase devuelve objetos planos: como Error, la UI puede mostrar el mensaje.
     if (error) throw new Error(error.message);
-    return queue.some((item) => writeKey(item) === key) ? 'pending' : 'saved';
+    if (queue.some((item) => writeKey(item) === key)) return 'pending';
+    return superseded.has(entry) ? 'superseded' : 'saved';
   }
 
   async function pendingFor(forUser: string, movieId: number): Promise<PendingWrite[]> {

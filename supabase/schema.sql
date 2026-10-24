@@ -507,3 +507,40 @@ begin
   return new;
 end;
 $$;
+
+-- "Gana el más reciente" por campo (A5): cada campo guarda la hora del
+-- teléfono en que cambió, así un cambio sin red de la nota no pisa estrellas
+-- más nuevas de otro dispositivo, ni al revés. El estado usa
+-- status_changed_at. En las filas anteriores se toma updated_at.
+alter table public.user_movies add column if not exists rating_changed_at timestamptz;
+alter table public.user_movies add column if not exists notes_changed_at timestamptz;
+update public.user_movies set rating_changed_at = updated_at where rating_changed_at is null;
+update public.user_movies set notes_changed_at = updated_at where notes_changed_at is null;
+alter table public.user_movies alter column rating_changed_at set default now();
+alter table public.user_movies alter column rating_changed_at set not null;
+alter table public.user_movies alter column notes_changed_at set default now();
+alter table public.user_movies alter column notes_changed_at set not null;
+
+-- Calificadores con la misma regla: desmarcar deja la fila con selected =
+-- false y la hora del cambio en vez de borrarla, para que un cambio viejo
+-- hecho sin red no vuelva a marcar (ni desmarque) uno más reciente.
+alter table public.user_movie_reactions add column if not exists selected boolean not null default true;
+alter table public.user_movie_reactions add column if not exists changed_at timestamptz;
+update public.user_movie_reactions set changed_at = created_at where changed_at is null;
+alter table public.user_movie_reactions alter column changed_at set default now();
+alter table public.user_movie_reactions alter column changed_at set not null;
+
+drop policy if exists "Users can update their movie reactions" on public.user_movie_reactions;
+
+-- Igual que al marcar: solo un calificador base o uno propio.
+create policy "Users can update their movie reactions"
+on public.user_movie_reactions for update
+to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id and exists (
+  select 1 from public.reactions
+  where reactions.id = user_movie_reactions.reaction_id
+    and (reactions.user_id is null or reactions.user_id = (select auth.uid()))
+));
+
+grant update on public.user_movie_reactions to authenticated;

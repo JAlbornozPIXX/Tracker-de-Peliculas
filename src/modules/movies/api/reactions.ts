@@ -27,7 +27,8 @@ export async function getReactionIdsForMovie(userId: string, movieId: number): P
     .from('user_movie_reactions')
     .select('reaction_id')
     .eq('user_id', userId)
-    .eq('movie_id', movieId);
+    .eq('movie_id', movieId)
+    .eq('selected', true);
 
   if (error) throw error;
   return (data ?? []).map((row) => row.reaction_id);
@@ -37,15 +38,45 @@ export function createReaction(userId: string, emoji: string, name: string) {
   return supabase.from('reactions').insert({ user_id: userId, emoji, name }).select('id, emoji, name').single();
 }
 
-export function addReactionToMovie(userId: string, movieId: number, reactionId: number) {
-  return supabase.from('user_movie_reactions').insert({ user_id: userId, movie_id: movieId, reaction_id: reactionId });
-}
+// Las marcas pasan por la cola de src/modules/sync. Desmarcar deja la fila con
+// selected = false y su hora, para decidir qué cambio es más reciente.
 
-export function removeReactionFromMovie(userId: string, movieId: number, reactionId: number) {
-  return supabase
+/**
+ * Marca o desmarca solo si en el servidor ese calificador no cambió después de
+ * changedAt. applied es false si la fila no existe o si su cambio es más nuevo.
+ */
+export async function updateMovieReactionIfOlder(
+  userId: string,
+  movieId: number,
+  reactionId: number,
+  selected: boolean,
+  changedAt: string
+) {
+  const { data, error, status } = await supabase
     .from('user_movie_reactions')
-    .delete()
+    .update({ selected, changed_at: changedAt })
     .eq('user_id', userId)
     .eq('movie_id', movieId)
-    .eq('reaction_id', reactionId);
+    .eq('reaction_id', reactionId)
+    .lte('changed_at', changedAt)
+    .select('reaction_id');
+  return { error, status, applied: (data?.length ?? 0) > 0 };
+}
+
+export async function movieReactionExists(userId: string, movieId: number, reactionId: number) {
+  const { data, error, status } = await supabase
+    .from('user_movie_reactions')
+    .select('reaction_id')
+    .eq('user_id', userId)
+    .eq('movie_id', movieId)
+    .eq('reaction_id', reactionId)
+    .maybeSingle();
+  return { error, status, exists: data != null };
+}
+
+export async function insertMovieReaction(userId: string, movieId: number, reactionId: number, changedAt: string) {
+  const { error, status } = await supabase
+    .from('user_movie_reactions')
+    .insert({ user_id: userId, movie_id: movieId, reaction_id: reactionId, selected: true, changed_at: changedAt });
+  return { error, status };
 }
