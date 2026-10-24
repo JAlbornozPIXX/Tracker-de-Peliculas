@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { isGoldenRating } from '@/utils/golden-rating';
+import { posterInitial } from '@/utils/poster-initial';
 
 const GOLD = '#E8B64C';
 const FRAME_WIDTH = 3;
@@ -58,7 +59,7 @@ export function GoldenPoster({
         {posterUrl ? (
           <Image accessibilityIgnoresInvertColors source={{ uri: posterUrl }} style={styles.image} resizeMode="cover" />
         ) : (
-          <Text style={[styles.mark, { fontSize: Math.round(size * 0.36) }]}>{title.charAt(0).toUpperCase()}</Text>
+          <Text style={[styles.mark, { fontSize: Math.round(size * 0.36) }]}>{posterInitial(title)}</Text>
         )}
       </View>
     </Animated.View>

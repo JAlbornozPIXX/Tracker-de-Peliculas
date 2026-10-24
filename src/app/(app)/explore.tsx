@@ -16,6 +16,8 @@ import { GoldenPoster } from '@/components/golden-poster';
 import { ListsSection } from '@/modules/lists/components/lists-section';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
+import { getShamePile } from '@/modules/watchlist/api/shame';
+import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -71,6 +73,55 @@ function SearchBar({ onPress }: { onPress: () => void }) {
   );
 }
 
+// Zonas que no están en la barra inferior: se abren desde aquí en un toque.
+const QUICK_ACCESS = [
+  { href: '/random', icon: '◎', label: 'Azar' },
+  { href: '/shame', icon: '⏳', label: 'Pila' },
+  { href: '/ranking', icon: '★', label: 'Ranking' },
+  { href: '/stats', icon: '▤', label: 'Estadísticas' },
+  { href: '/challenges', icon: '⚑', label: 'Retos' },
+  { href: '/wrapped', icon: '✦', label: 'Wrapped' },
+] as const;
+
+function QuickAccess({ onOpen }: { onOpen: (href: (typeof QUICK_ACCESS)[number]['href']) => void }) {
+  return (
+    <View style={styles.quickGrid}>
+      {QUICK_ACCESS.map((item) => (
+        <Pressable
+          key={item.href}
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
+          onPress={() => onOpen(item.href)}
+          style={({ pressed }) => [styles.quickTile, pressed && styles.quickTilePressed]}>
+          <Text style={styles.quickIcon}>{item.icon}</Text>
+          <Text numberOfLines={1} style={styles.quickLabel}>
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function ShameBanner({ count, onPress }: { count: number; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${count} películas en la pila de la vergüenza`}
+      onPress={onPress}
+      style={styles.shameBanner}>
+      <Text style={styles.shameIcon}>⏳</Text>
+      <View style={styles.shameText}>
+        <Text style={styles.shameTitle}>
+          {count === 1 ? '1 película' : `${count} películas`} en la pila de la vergüenza
+        </Text>
+        <Text style={styles.shameCopy}>Llevan {SHAME_MIN_DAYS} días o más en Ver más tarde.</Text>
+      </View>
+      <Text style={styles.shameArrow}>›</Text>
+    </Pressable>
+  );
+}
+
 function SectionTitle({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionTitleRow}>
@@ -89,6 +140,7 @@ export default function ExploreScreen() {
   const [ratings, setRatings] = useState<Record<number, number | null>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLabel, setAvatarLabel] = useState('');
+  const [shameCount, setShameCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Se recarga al volver a la pantalla para reflejar los estados cambiados
@@ -115,15 +167,19 @@ export default function ExploreScreen() {
 
         const userId = userResult.data.user?.id;
         if (userId) {
-          const [{ data, error }, profile] = await Promise.all([
+          const [{ data, error }, profile, shame] = await Promise.all([
             supabase
               .from('user_movies')
               .select('movie_id, status, rating, movies(id, title, overview, poster_url)')
               .eq('user_id', userId),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
+            // El aviso es secundario: si falla, Inicio se muestra igual.
+            getShamePile(userId).catch(() => []),
           ]);
           if (!active) return;
+
+          setShameCount(shame.length);
 
           // La foto se sube siempre a la misma URL; updated_at cambia con cada
           // subida y evita que se muestre la imagen anterior desde la caché.
@@ -180,18 +236,9 @@ export default function ExploreScreen() {
 
         <SearchBar onPress={() => router.push('/search')} />
 
-        <View style={styles.hero}>
-          <View style={styles.heroGlow} />
-          <Text style={styles.heroKicker}>TU CARTELERA PERSONAL</Text>
-          <Text style={styles.heroTitle}>Siempre hay una historia para ti.</Text>
-          <Text style={styles.heroCopy}>
-            Guarda, descubre y retoma tus películas sin perder el hilo.
-          </Text>
-          <Pressable onPress={() => router.push('/search')} style={styles.heroButton}>
-            <Text style={styles.heroButtonText}>Explorar catálogo</Text>
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
-        </View>
+        {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
+
+        <QuickAccess onOpen={(href) => router.push(href)} />
 
         <Pressable
           accessibilityRole="button"
@@ -263,14 +310,17 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
   eyebrow: { color: '#B94DFF', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   greeting: { color: '#F4F4F5', fontSize: 23, fontWeight: '700', marginTop: 4 },
-  hero: { overflow: 'hidden', minHeight: 220, borderRadius: 22, padding: 22, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', justifyContent: 'flex-end', marginBottom: 16 },
-  heroGlow: { position: 'absolute', right: -70, top: -80, width: 220, height: 220, borderRadius: 110, backgroundColor: '#8B2FC1', opacity: 0.35 },
-  heroKicker: { color: '#D78CFF', fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginBottom: 10 },
-  heroTitle: { color: '#FFFFFF', fontSize: 29, lineHeight: 34, fontWeight: '800', maxWidth: 300 },
-  heroCopy: { color: '#D2C4D8', fontSize: 14, lineHeight: 20, marginTop: 10, maxWidth: 300 },
-  heroButton: { alignSelf: 'flex-start', marginTop: 18, backgroundColor: '#A83BDD', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heroButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  arrow: { color: '#FFFFFF', fontSize: 24, lineHeight: 18 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 22 },
+  quickTile: { flexBasis: '30%', flexGrow: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 16, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
+  quickTilePressed: { backgroundColor: '#211D28' },
+  quickIcon: { color: '#D78CFF', fontSize: 20, lineHeight: 22 },
+  quickLabel: { color: '#D5D0D8', fontSize: 12, fontWeight: '700' },
+  shameBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#2A2112', borderWidth: 1, borderColor: '#5C4520', marginTop: -8, marginBottom: 22 },
+  shameIcon: { fontSize: 22 },
+  shameText: { flex: 1 },
+  shameTitle: { color: '#F4F4F5', fontSize: 14, fontWeight: '800' },
+  shameCopy: { color: '#C9B48A', fontSize: 12, marginTop: 3 },
+  shameArrow: { color: '#E8B64C', fontSize: 24, lineHeight: 24 },
   wrappedLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: '#17151D', borderRadius: 16, borderWidth: 1, borderColor: '#4D1E61', paddingVertical: 14, paddingHorizontal: 16, marginBottom: 24 },
   wrappedLinkTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '800' },
   wrappedLinkCopy: { color: '#8F8795', fontSize: 12, marginTop: 3 },

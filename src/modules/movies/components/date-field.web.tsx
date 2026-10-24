@@ -3,13 +3,23 @@
  * selector de fecha del navegador. max deshabilita los días posteriores; el
  * valor se descarta si alguien escribe una fecha fuera de rango a mano.
  */
-export function DateField({ value, max, onChange }: { value: string; max: string; onChange: (next: string) => void }) {
+export function DateField({
+  value,
+  max,
+  onChange,
+  label = 'Fecha de la vista',
+}: {
+  value: string;
+  max: string;
+  onChange: (next: string) => void;
+  label?: string;
+}) {
   return (
     <input
       type="date"
       value={value}
       max={max}
-      aria-label="Fecha de la vista"
+      aria-label={label}
       onChange={(event) => {
         const next = event.target.value;
         if (next && next <= max) onChange(next);

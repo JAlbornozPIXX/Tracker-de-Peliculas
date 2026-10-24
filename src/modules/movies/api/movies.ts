@@ -84,11 +84,47 @@ export type RouletteFilters = {
   maxDurationMinutes: number | null;
 };
 
+// Todo el catálogo, el mismo que muestra la sección Catálogo de Inicio.
+export async function getAllMovies(): Promise<MovieRow[]> {
+  const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).order('title');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getMoviesByIds(movieIds: number[]): Promise<MovieRow[]> {
+  if (movieIds.length === 0) return [];
+  const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).in('id', movieIds);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// RN-03: el catálogo del usuario son las películas con seguimiento
+// (user_movies) más las que están en alguna de sus listas.
+async function getCatalogMovieIds(userId: string): Promise<Set<number>> {
+  const [tracked, listed] = await Promise.all([
+    supabase.from('user_movies').select('movie_id').eq('user_id', userId),
+    supabase.from('list_movies').select('movie_id, lists!inner(user_id)').eq('lists.user_id', userId),
+  ]);
+
+  if (tracked.error) throw tracked.error;
+  if (listed.error) throw listed.error;
+  return new Set([...(tracked.data ?? []), ...(listed.data ?? [])].map((row) => row.movie_id));
+}
+
+/**
+ * Películas del catálogo del usuario que cumplen los filtros de la ruleta,
+ * sin las de excludedMovieIds. Sin duración conocida no pasan un tope de minutos.
+ */
 export async function getEligibleMovies(
+  userId: string,
   excludedMovieIds: number[],
   filters: RouletteFilters
 ): Promise<MovieRow[]> {
-  let query = supabase.from('movies').select(MOVIE_COLUMNS);
+  const excluded = new Set(excludedMovieIds);
+  const catalogIds = [...(await getCatalogMovieIds(userId))].filter((id) => !excluded.has(id));
+  if (catalogIds.length === 0) return [];
+
+  let query = supabase.from('movies').select(MOVIE_COLUMNS).in('id', catalogIds);
 
   if (filters.genre) {
     query = query.contains('genre', [filters.genre]);
@@ -96,10 +132,6 @@ export async function getEligibleMovies(
 
   if (filters.maxDurationMinutes != null) {
     query = query.lte('duration_minutes', filters.maxDurationMinutes);
-  }
-
-  if (excludedMovieIds.length > 0) {
-    query = query.not('id', 'in', `(${excludedMovieIds.join(',')})`);
   }
 
   const { data, error } = await query;
