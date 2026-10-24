@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +13,15 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BOTTOM_BAR_SPACE, BottomBar } from '@/components/bottom-bar';
 import { GoldenPoster } from '@/components/golden-poster';
+import { useAuth } from '@/modules/auth/context/AuthContext';
 import { ListsSection } from '@/modules/lists/components/lists-section';
+import { getCatalogMovies } from '@/modules/movies/api/movies';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { getShamePile } from '@/modules/watchlist/api/shame';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
+import { errorMessage, showAlert } from '@/utils/alert';
+import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 type Movie = {
@@ -134,6 +138,10 @@ function SectionTitle({ title, count }: { title: string; count?: number }) {
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // La sesión guardada: no depende de la red, así Inicio carga lo que pueda sin conexión.
+  const { session } = useAuth();
+  const userId = session?.user.id;
+  const email = session?.user.email;
   const [movies, setMovies] = useState<Movie[]>([]);
   const [watching, setWatching] = useState<TrackedMovie[]>([]);
   // Nota del usuario por movie_id, para el marco dorado del catálogo.
@@ -150,28 +158,23 @@ export default function ExploreScreen() {
       let active = true;
 
       async function loadHome() {
-        const [movieResult, userResult] = await Promise.all([
-          supabase
-            .from('movies')
-            .select('id, title, overview, poster_url')
-            .order('title'),
-          supabase.auth.getUser(),
-        ]);
-        if (!active) return;
-
-        if (movieResult.error) {
-          Alert.alert('No se pudo cargar el catálogo', movieResult.error.message);
-        } else {
-          setMovies(movieResult.data ?? []);
-        }
-
-        const userId = userResult.data.user?.id;
         if (userId) {
-          const [{ data, error }, profile, shame] = await Promise.all([
-            supabase
-              .from('user_movies')
-              .select('movie_id, status, rating, movies(id, title, overview, poster_url)')
-              .eq('user_id', userId),
+          let catalogError: unknown = null;
+          const [catalog, tracked, profile, shame] = await Promise.all([
+            // El catálogo propio (RN-03): la tabla movies tiene también las
+            // películas de otros usuarios.
+            getCatalogMovies(userId).catch((err: unknown) => {
+              catalogError = err;
+              return null;
+            }),
+            fetchAllRows<TrackedMovie>((from, to) =>
+              supabase
+                .from('user_movies')
+                .select('movie_id, status, rating, movies(id, title, overview, poster_url)', { count: 'exact' })
+                .eq('user_id', userId)
+                .order('movie_id')
+                .range(from, to)
+            ).catch(() => null),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
             // El aviso es secundario: si falla, Inicio se muestra igual.
@@ -179,6 +182,8 @@ export default function ExploreScreen() {
           ]);
           if (!active) return;
 
+          if (catalog) setMovies(catalog);
+          else showAlert('No se pudo cargar el catálogo', errorMessage(catalogError));
           setShameCount(shame.length);
 
           // La foto se sube siempre a la misma URL; updated_at cambia con cada
@@ -186,10 +191,9 @@ export default function ExploreScreen() {
           setAvatarUrl(
             profile?.avatarUrl ? `${profile.avatarUrl}?t=${encodeURIComponent(profile.updatedAt ?? '')}` : null
           );
-          setAvatarLabel(profile?.displayName || userResult.data.user?.email || '');
+          setAvatarLabel(profile?.displayName || email || '');
 
-          if (!error) {
-            const tracked = (data ?? []) as unknown as TrackedMovie[];
+          if (tracked) {
             setWatching(tracked.filter((item) => item.status === 'watching'));
             setRatings(Object.fromEntries(tracked.map((item) => [item.movie_id, item.rating])));
           }
@@ -202,7 +206,7 @@ export default function ExploreScreen() {
       return () => {
         active = false;
       };
-    }, [])
+    }, [userId, email])
   );
 
   if (loading) {
@@ -240,18 +244,6 @@ export default function ExploreScreen() {
 
         <QuickAccess onOpen={(href) => router.push(href)} />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Ver tu Wrapped ${new Date().getFullYear()}`}
-          onPress={() => router.push('/wrapped')}
-          style={styles.wrappedLink}>
-          <View>
-            <Text style={styles.wrappedLinkTitle}>Tu Wrapped {new Date().getFullYear()}</Text>
-            <Text style={styles.wrappedLinkCopy}>Tu año en cine en una tarjeta para compartir</Text>
-          </View>
-          <Text style={styles.wrappedLinkArrow}>›</Text>
-        </Pressable>
-
         <SectionTitle title="Continuar viendo" count={watching.length} />
         {watching.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -278,21 +270,28 @@ export default function ExploreScreen() {
 
         <SectionTitle title="Catálogo" count={movies.length} />
         {movies.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {movies.map((movie) => (
+          // FlatList: el catálogo completo puede tener cientos de títulos y
+          // solo se dibujan los que están cerca de la pantalla.
+          <FlatList
+            horizontal
+            data={movies}
+            keyExtractor={(movie) => String(movie.id)}
+            renderItem={({ item: movie }) => (
               <MovieCard
-                key={movie.id}
                 movie={movie}
                 rating={ratings[movie.id] ?? null}
                 compact
                 onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
               />
-            ))}
-          </ScrollView>
+            )}
+            initialNumToRender={6}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
         ) : (
           <View style={styles.emptyPanel}>
             <Text style={styles.emptyTitle}>Todavía no hay películas</Text>
-            <Text style={styles.emptyCopy}>Añade títulos desde Supabase para llenar tu cartelera.</Text>
+            <Text style={styles.emptyCopy}>Busca títulos en Descubre y agrégalos a una lista o márcalos para llenar tu cartelera.</Text>
           </View>
         )}
       </ScrollView>
@@ -321,10 +320,6 @@ const styles = StyleSheet.create({
   shameTitle: { color: '#F4F4F5', fontSize: 14, fontWeight: '800' },
   shameCopy: { color: '#C9B48A', fontSize: 12, marginTop: 3 },
   shameArrow: { color: '#E8B64C', fontSize: 24, lineHeight: 24 },
-  wrappedLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: '#17151D', borderRadius: 16, borderWidth: 1, borderColor: '#4D1E61', paddingVertical: 14, paddingHorizontal: 16, marginBottom: 24 },
-  wrappedLinkTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '800' },
-  wrappedLinkCopy: { color: '#8F8795', fontSize: 12, marginTop: 3 },
-  wrappedLinkArrow: { color: '#D78CFF', fontSize: 26, lineHeight: 26 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', marginBottom: 22 },
   searchBarIcon: { color: '#D78CFF', fontSize: 18 },
   searchBarPlaceholder: { color: '#7D7382', fontSize: 14 },

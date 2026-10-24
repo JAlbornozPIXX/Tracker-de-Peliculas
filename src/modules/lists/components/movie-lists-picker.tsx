@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import {
   addMovieToList,
@@ -9,6 +10,7 @@ import {
   ListSummary,
   removeMovieFromList,
 } from '@/modules/lists/api/lists';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 /**
  * Chips para agregar o quitar un título de las listas del usuario.
@@ -28,38 +30,41 @@ export function MovieListsPicker({
   const [lists, setLists] = useState<ListSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const writes = useWriteTracker();
 
+  // movieId cambia de null al id nuevo durante el primer cambio de un título
+  // de TheMovieDB: esa carga no debe pisar el cambio en curso, así que espera
+  // a que termine (y se repite si se cruza con otro).
   useEffect(() => {
     if (!userId) return;
-    let active = true;
-    Promise.all([getLists(userId), movieId != null ? getListIdsForMovie(movieId) : []])
-      .then(([userLists, listIds]) => {
-        if (!active) return;
+    return writes.loadWhenIdle(
+      () => Promise.all([getLists(userId), movieId != null ? getListIdsForMovie(movieId) : []]),
+      ([userLists, listIds]) => {
         setLists(userLists);
         setSelectedIds(listIds);
         setLoaded(true);
-      })
-      .catch((err) => Alert.alert('No se pudieron cargar tus listas', err instanceof Error ? err.message : ''));
-    return () => {
-      active = false;
-    };
-  }, [userId, movieId]);
+      },
+      (err) => showAlert('No se pudieron cargar tus listas', errorMessage(err))
+    );
+  }, [userId, movieId, writes]);
 
   async function handleToggle(listId: number) {
     const wasSelected = selectedIds.includes(listId);
     setSelectedIds((current) => (wasSelected ? current.filter((id) => id !== listId) : [...current, listId]));
 
     try {
-      const resolvedMovieId = movieId ?? (await ensureMovieId());
-      const { error } = wasSelected
-        ? await removeMovieFromList(listId, resolvedMovieId)
-        : await addMovieToList(listId, resolvedMovieId);
-      if (error) throw error;
+      await writes.track(async () => {
+        const resolvedMovieId = movieId ?? (await ensureMovieId());
+        const { error } = wasSelected
+          ? await removeMovieFromList(listId, resolvedMovieId)
+          : await addMovieToList(listId, resolvedMovieId);
+        if (error) throw error;
+      });
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, listId] : current.filter((id) => id !== listId)));
-      Alert.alert(
+      showAlert(
         wasSelected ? 'No se pudo quitar de la lista' : 'No se pudo agregar a la lista',
-        err instanceof Error ? err.message : ''
+        errorMessage(err)
       );
     }
   }

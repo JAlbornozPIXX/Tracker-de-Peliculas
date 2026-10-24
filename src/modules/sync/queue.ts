@@ -15,6 +15,11 @@ export function saveUserMovie(userId: string, movieId: number, fields: UserMovie
   return syncQueue.save(userId, { kind: 'user_movie', movieId, fields, changedAt: new Date().toISOString() });
 }
 
+// viewedOn es el día local del teléfono ('YYYY-MM-DD').
+export function saveAutoView(userId: string, movieId: number, viewedOn: string) {
+  return syncQueue.save(userId, { kind: 'auto_view', movieId, viewedOn, changedAt: new Date().toISOString() });
+}
+
 export function saveMovieReaction(userId: string, movieId: number, reactionId: number, selected: boolean) {
   return syncQueue.save(userId, {
     kind: 'reaction',

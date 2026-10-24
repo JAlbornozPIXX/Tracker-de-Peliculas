@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { getProfile, updateDisplayName, uploadAvatar } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 export default function Profile() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function Profile() {
         setSavedName(profile?.displayName ?? '');
         setAvatarUrl(profile?.avatarUrl ?? null);
       } catch (err) {
-        Alert.alert('No se pudo cargar tu perfil', err instanceof Error ? err.message : undefined);
+        showAlert('No se pudo cargar tu perfil', errorMessage(err));
       } finally {
         setLoading(false);
       }
@@ -58,7 +58,7 @@ export default function Profile() {
       await updateDisplayName(userId, trimmedName);
       setSavedName(trimmedName);
     } catch (err) {
-      Alert.alert('No se pudo guardar tu nombre', err instanceof Error ? err.message : undefined);
+      showAlert('No se pudo guardar tu nombre', errorMessage(err));
     } finally {
       setSavingName(false);
     }
@@ -68,7 +68,7 @@ export default function Profile() {
     if (!userId) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permiso necesario', 'Activa el acceso a tus fotos para cambiar tu avatar.');
+      showAlert('Permiso necesario', 'Activa el acceso a tus fotos para cambiar tu avatar.');
       return;
     }
 
@@ -87,7 +87,7 @@ export default function Profile() {
       const newUrl = await uploadAvatar(userId, result.assets[0]);
       setAvatarUrl(`${newUrl}?t=${Date.now()}`);
     } catch (err) {
-      Alert.alert('No se pudo subir tu foto', err instanceof Error ? err.message : undefined);
+      showAlert('No se pudo subir tu foto', errorMessage(err));
     } finally {
       setUploadingAvatar(false);
     }

@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/modules/auth/context/AuthContext';
@@ -9,6 +9,7 @@ import { getWrapped } from '@/modules/wrapped/api/wrapped';
 import { WrappedCard } from '@/modules/wrapped/components/wrapped-card';
 import { shareViewAsImage } from '@/modules/wrapped/utils/share-image';
 import { isWrappedReady, WRAPPED_MIN_VIEWS, type WrappedSummary } from '@/modules/wrapped/utils/summary';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 function PartialSummary({ summary, onSearch }: { summary: WrappedSummary; onSearch: () => void }) {
   return (
@@ -46,7 +47,7 @@ export default function Wrapped() {
     setLoadError(null);
     getWrapped(userId, year)
       .then((data) => active && setSummary(data))
-      .catch((err) => active && setLoadError(err instanceof Error ? err.message : 'Inténtalo de nuevo.'));
+      .catch((err) => active && setLoadError(errorMessage(err) || 'Inténtalo de nuevo.'));
     return () => {
       active = false;
     };
@@ -58,9 +59,9 @@ export default function Wrapped() {
     setSharing(true);
     try {
       const shared = await shareViewAsImage(cardRef, `wrapped-${year}`);
-      if (!shared) Alert.alert('No se puede compartir', 'Este dispositivo no permite compartir imágenes.');
+      if (!shared) showAlert('No se puede compartir', 'Este dispositivo no permite compartir imágenes.');
     } catch (err) {
-      Alert.alert('No se pudo crear la imagen', err instanceof Error ? err.message : '');
+      showAlert('No se pudo crear la imagen', errorMessage(err));
     } finally {
       setSharing(false);
     }

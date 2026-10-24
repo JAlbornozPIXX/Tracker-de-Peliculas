@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProgressBar } from '@/components/progress-bar';
@@ -13,6 +13,7 @@ import { getMovieDetails } from '@/modules/movies/api/tmdb';
 import { getWatchedMovieIds } from '@/modules/movies/api/user-movies';
 import { MovieResultCard } from '@/modules/movies/components/movie-result-card';
 import { withPendingWatchedIds } from '@/modules/sync/queue';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 // Terminadas según el servidor más los estados que aún no se suben (sin red o
 // recién marcados en la ficha). null si no se pudieron leer.
@@ -85,7 +86,7 @@ export default function ListDetail() {
           const watched = await loadWatchedIds(userId, data.movies.map((movie) => movie.id));
           if (active && watched) setWatchedIds(watched);
         })
-        .catch((err) => Alert.alert('No se pudo cargar la lista', err instanceof Error ? err.message : ''))
+        .catch((err) => showAlert('No se pudo cargar la lista', errorMessage(err)))
         .finally(() => active && setLoading(false));
       return () => {
         active = false;
@@ -107,7 +108,7 @@ export default function ListDetail() {
       await setListMoviePositions(list.id, changes);
     } catch (err) {
       setList((current) => current && { ...current, movies: previous });
-      Alert.alert('No se pudo cambiar el orden', err instanceof Error ? err.message : '');
+      showAlert('No se pudo cambiar el orden', errorMessage(err));
       // Cada posición se guarda por separado: si alguna alcanzó a guardarse,
       // el orden real es el del servidor.
       getListWithMovies(list.id)

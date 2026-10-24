@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Chips } from '@/components/chips';
 import { changeListKind, deleteList, LIST_NAME_MAX, renameList } from '@/modules/lists/api/lists';
 import { LIST_KINDS, ListKind } from '@/modules/lists/constants/kinds';
+import { showAlert } from '@/utils/alert';
 
 /**
  * Botón de tres puntos con las opciones de una lista: cambiar nombre, cambiar
@@ -55,7 +56,7 @@ export function ListOptions({
     const { error } = await renameList(list.id, trimmedDraftName);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo cambiar el nombre', error.message);
+      showAlert('No se pudo cambiar el nombre', error.message);
       return;
     }
     setDialog('none');
@@ -76,7 +77,7 @@ export function ListOptions({
     const { error } = await changeListKind(list.id, draftKind);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo cambiar el tipo', error.message);
+      showAlert('No se pudo cambiar el tipo', error.message);
       return;
     }
     setDialog('none');
@@ -88,7 +89,7 @@ export function ListOptions({
     const { error } = await deleteList(list.id);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo eliminar la lista', error.message);
+      showAlert('No se pudo eliminar la lista', error.message);
       return;
     }
     setDialog('none');

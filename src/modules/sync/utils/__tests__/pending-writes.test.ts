@@ -2,8 +2,11 @@ import {
   applyPendingToReactions,
   applyPendingToUserMovie,
   applyPendingToWatchedIds,
+  changedAtByField,
+  isRetryableError,
   isRetryableStatus,
   mergeWrite,
+  pendingAutoViewDates,
   PendingWrite,
 } from '../pending-writes';
 
@@ -14,8 +17,37 @@ describe('mergeWrite', () => {
     const queue = mergeWrite([], { kind: 'user_movie', movieId: 1, fields: { status: 'watching' }, changedAt: at });
     const next = mergeWrite(queue, { kind: 'user_movie', movieId: 1, fields: { notes: 'hola' }, changedAt: '2026-10-21T10:01:00.000Z' });
     expect(next).toEqual([
-      { kind: 'user_movie', movieId: 1, fields: { status: 'watching', notes: 'hola' }, changedAt: '2026-10-21T10:01:00.000Z' },
+      {
+        kind: 'user_movie',
+        movieId: 1,
+        fields: { status: 'watching', notes: 'hola' },
+        changedAt: '2026-10-21T10:01:00.000Z',
+        // Cada campo conserva la hora en que cambió.
+        fieldChangedAt: { status: at, notes: '2026-10-21T10:01:00.000Z' },
+      },
     ]);
+  });
+
+  it('un campo que vuelve a cambiar toma la hora nueva', () => {
+    const queue = mergeWrite([], { kind: 'user_movie', movieId: 1, fields: { rating: 2, notes: 'a' }, changedAt: at });
+    const [merged] = mergeWrite(queue, { kind: 'user_movie', movieId: 1, fields: { rating: 4 }, changedAt: '2026-10-21T10:05:00.000Z' });
+    expect(merged.kind === 'user_movie' && changedAtByField(merged)).toEqual({ rating: '2026-10-21T10:05:00.000Z', notes: at });
+  });
+
+  it('una escritura sin fieldChangedAt (guardada por la versión anterior) usa changedAt en todos los campos', () => {
+    expect(changedAtByField({ kind: 'user_movie', movieId: 1, fields: { status: 'watched', rating: 4 }, changedAt: at })).toEqual({
+      status: at,
+      rating: at,
+    });
+  });
+
+  it('una vista automática por película y día', () => {
+    let queue = mergeWrite([], { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-20', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-20', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'auto_view', movieId: 1, viewedOn: '2026-10-21', changedAt: at });
+    queue = mergeWrite(queue, { kind: 'user_movie', movieId: 1, fields: { status: 'watched' }, changedAt: at });
+    expect(queue).toHaveLength(3);
+    expect(pendingAutoViewDates(queue)).toEqual(['2026-10-21', '2026-10-20']);
   });
 
   it('en un calificador se queda con el último estado', () => {
@@ -26,13 +58,19 @@ describe('mergeWrite', () => {
   });
 });
 
-describe('isRetryableStatus', () => {
+describe('cuándo reintentar', () => {
   it('reintenta sin red, sin sesión o con error del servidor', () => {
     [0, 401, 408, 429, 500, 503].forEach((status) => expect(isRetryableStatus(status)).toBe(true));
   });
 
   it('no reintenta un rechazo como RLS o validación', () => {
     [400, 403, 404, 409].forEach((status) => expect(isRetryableStatus(status)).toBe(false));
+  });
+
+  it('reintenta si la base todavía no tiene las columnas o tablas de schema.sql', () => {
+    ['PGRST204', 'PGRST205', '42703', '42P01'].forEach((code) => expect(isRetryableError(400, code)).toBe(true));
+    expect(isRetryableError(400, '23514')).toBe(false);
+    expect(isRetryableError(0)).toBe(true);
   });
 });
 

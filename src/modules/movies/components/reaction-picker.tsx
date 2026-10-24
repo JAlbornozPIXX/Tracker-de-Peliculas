@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import {
   createReaction,
@@ -12,6 +13,7 @@ import {
   REACTION_NAME_MAX,
 } from '@/modules/movies/api/reactions';
 import { saveMovieReaction, syncQueue, withPendingReactions } from '@/modules/sync/queue';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const PREVIEW_COUNT = 3;
 
@@ -44,37 +46,44 @@ export function ReactionPicker({
   const [draftEmoji, setDraftEmoji] = useState('');
   const [draftName, setDraftName] = useState('');
   const [saving, setSaving] = useState(false);
+  const writes = useWriteTracker();
 
   const trimmedEmoji = draftEmoji.trim();
   const trimmedName = draftName.trim();
   const canCreate = trimmedEmoji.length > 0 && trimmedName.length > 0 && !saving;
 
+  // movieId cambia de null al id nuevo durante la primera marca de un título
+  // de TheMovieDB: esa carga no debe pisar la marca en curso, así que espera a
+  // que termine (y se repite si se cruza con otra).
   useEffect(() => {
     if (!userId) return;
-    let active = true;
-    Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []])
-      .then(([allReactions, reactionIds]) => {
-        if (!active) return;
+    return writes.loadWhenIdle(
+      () => Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []]),
+      ([allReactions, reactionIds]) => {
         setReactions(allReactions);
         setSelectedIds(reactionIds);
         setLoaded(true);
-      })
-      .catch((err) => Alert.alert('No se pudieron cargar los calificadores', err instanceof Error ? err.message : ''));
-    return () => {
-      active = false;
-    };
-  }, [userId, movieId]);
+      },
+      (err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err))
+    );
+  }, [userId, movieId, writes]);
 
-  // Un calificador pendiente que el servidor rechazó: se vuelve a lo guardado.
+  // Un calificador pendiente que el servidor rechazó o que perdió contra un
+  // cambio más reciente: se vuelve a lo guardado, cuando no quede una marca
+  // en curso.
   useEffect(() => {
     if (!userId || movieId == null) return;
-    return syncQueue.subscribeDiscarded((discardedId) => {
-      if (discardedId !== movieId) return;
-      loadSelectedIds(userId, movieId)
-        .then(setSelectedIds)
-        .catch(() => {});
+    let cancelReload = () => {};
+    const unsubscribe = syncQueue.subscribeDiscarded((discardedId, kind) => {
+      if (discardedId !== movieId || kind !== 'reaction') return;
+      cancelReload();
+      cancelReload = writes.loadWhenIdle(() => loadSelectedIds(userId, movieId), setSelectedIds);
     });
-  }, [userId, movieId]);
+    return () => {
+      unsubscribe();
+      cancelReload();
+    };
+  }, [userId, movieId, writes]);
 
   async function handleToggle(reactionId: number) {
     if (!userId) return;
@@ -82,14 +91,16 @@ export function ReactionPicker({
     setSelectedIds((current) => (wasSelected ? current.filter((id) => id !== reactionId) : [...current, reactionId]));
 
     try {
-      const resolvedMovieId = movieId ?? (await ensureMovieId());
-      // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
-      await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
+      await writes.track(async () => {
+        const resolvedMovieId = movieId ?? (await ensureMovieId());
+        // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
+        await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
+      });
     } catch (err) {
       setSelectedIds((current) => (wasSelected ? [...current, reactionId] : current.filter((id) => id !== reactionId)));
-      Alert.alert(
+      showAlert(
         wasSelected ? 'No se pudo quitar el calificador' : 'No se pudo marcar el calificador',
-        err instanceof Error ? err.message : ''
+        errorMessage(err)
       );
     }
   }
@@ -106,7 +117,7 @@ export function ReactionPicker({
     const { data, error } = await createReaction(userId, trimmedEmoji, trimmedName);
     setSaving(false);
     if (error) {
-      Alert.alert('No se pudo crear el calificador', error.message);
+      showAlert('No se pudo crear el calificador', error.message);
       return;
     }
     setReactions((current) => [...current, data]);

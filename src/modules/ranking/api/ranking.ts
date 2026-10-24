@@ -1,5 +1,6 @@
 import { getListMemberships } from '@/modules/lists/api/lists';
 import type { RankedMovie } from '@/modules/ranking/utils/ranking';
+import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 type RatedRow = {
@@ -13,28 +14,44 @@ type RatedRow = {
  */
 export async function getRankedMovies(userId: string): Promise<RankedMovie[]> {
   const [rated, views, reactions, memberships] = await Promise.all([
-    supabase
-      .from('user_movies')
-      .select('rating, movies(id, title, poster_url, release_date, genre)')
-      .eq('user_id', userId)
-      .not('rating', 'is', null),
-    supabase.from('movie_views').select('movie_id, viewed_on').eq('user_id', userId),
-    supabase.from('user_movie_reactions').select('movie_id, reaction_id').eq('user_id', userId),
+    fetchAllRows<RatedRow>((from, to) =>
+      supabase
+        .from('user_movies')
+        .select('rating, movies(id, title, poster_url, release_date, genre)', { count: 'exact' })
+        .eq('user_id', userId)
+        .not('rating', 'is', null)
+        .order('movie_id')
+        .range(from, to)
+    ),
+    fetchAllRows<{ movie_id: number; viewed_on: string }>((from, to) =>
+      supabase
+        .from('movie_views')
+        .select('movie_id, viewed_on', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('id')
+        .range(from, to)
+    ),
+    fetchAllRows<{ movie_id: number; reaction_id: number }>((from, to) =>
+      supabase
+        .from('user_movie_reactions')
+        .select('movie_id, reaction_id', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('selected', true)
+        .order('movie_id')
+        .order('reaction_id')
+        .range(from, to)
+    ),
     getListMemberships(),
   ]);
 
-  if (rated.error) throw rated.error;
-  if (views.error) throw views.error;
-  if (reactions.error) throw reactions.error;
-
   const lastViewed = new Map<number, string>();
-  for (const view of views.data ?? []) {
+  for (const view of views) {
     const current = lastViewed.get(view.movie_id);
     if (!current || view.viewed_on > current) lastViewed.set(view.movie_id, view.viewed_on);
   }
 
   const reactionIds = new Map<number, number[]>();
-  for (const row of reactions.data ?? []) {
+  for (const row of reactions) {
     reactionIds.set(row.movie_id, [...(reactionIds.get(row.movie_id) ?? []), row.reaction_id]);
   }
 
@@ -43,7 +60,7 @@ export async function getRankedMovies(userId: string): Promise<RankedMovie[]> {
     for (const movieId of movieIds) listIds.set(movieId, [...(listIds.get(movieId) ?? []), listId]);
   }
 
-  return ((rated.data ?? []) as unknown as RatedRow[]).flatMap(({ rating, movies: movie }) =>
+  return rated.flatMap(({ rating, movies: movie }) =>
     movie
       ? [
           {

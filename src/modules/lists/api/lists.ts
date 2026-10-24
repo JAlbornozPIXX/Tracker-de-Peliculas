@@ -1,5 +1,6 @@
 import { DEFAULT_LIST_KIND, ListKind } from '@/modules/lists/constants/kinds';
 import { sortListMovies } from '@/modules/lists/utils/list-order';
+import { fetchAllRows } from '@/utils/fetch-all';
 import { supabase } from '@/utils/supabase';
 
 export type ListSummary = {
@@ -94,20 +95,28 @@ const MOVIE_CARD_COLUMNS = 'id, title, poster_url, release_date';
  */
 export async function getUserMoviesByGenre(userId: string, genre: string): Promise<MovieCardData[]> {
   const [tracked, listed] = await Promise.all([
-    supabase
-      .from('user_movies')
-      .select(`movies!inner(${MOVIE_CARD_COLUMNS})`)
-      .eq('user_id', userId)
-      .contains('movies.genre', [genre]),
+    fetchAllRows<{ movies: MovieCardData }>((from, to) =>
+      supabase
+        .from('user_movies')
+        .select(`movies!inner(${MOVIE_CARD_COLUMNS})`, { count: 'exact' })
+        .eq('user_id', userId)
+        .contains('movies.genre', [genre])
+        .order('movie_id')
+        .range(from, to)
+    ),
     // RLS limita el resultado a las listas del usuario con sesión iniciada.
-    supabase.from('list_movies').select(`movies!inner(${MOVIE_CARD_COLUMNS})`).contains('movies.genre', [genre]),
+    fetchAllRows<{ movies: MovieCardData }>((from, to) =>
+      supabase
+        .from('list_movies')
+        .select(`movies!inner(${MOVIE_CARD_COLUMNS})`, { count: 'exact' })
+        .contains('movies.genre', [genre])
+        .order('list_id')
+        .order('movie_id')
+        .range(from, to)
+    ),
   ]);
 
-  if (tracked.error) throw tracked.error;
-  if (listed.error) throw listed.error;
-
-  const rows = [...(tracked.data ?? []), ...(listed.data ?? [])] as unknown as { movies: MovieCardData }[];
-  const byId = new Map(rows.map((row) => [row.movies.id, row.movies]));
+  const byId = new Map([...tracked, ...listed].map((row) => [row.movies.id, row.movies]));
   return Array.from(byId.values()).sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -121,11 +130,17 @@ export async function getListIdsForMovie(movieId: number): Promise<number[]> {
 
 // Ids de las películas de cada lista del usuario (RLS filtra las ajenas).
 export async function getListMemberships(): Promise<Map<number, number[]>> {
-  const { data, error } = await supabase.from('list_movies').select('list_id, movie_id');
+  const rows = await fetchAllRows<{ list_id: number; movie_id: number }>((from, to) =>
+    supabase
+      .from('list_movies')
+      .select('list_id, movie_id', { count: 'exact' })
+      .order('list_id')
+      .order('movie_id')
+      .range(from, to)
+  );
 
-  if (error) throw error;
   const byList = new Map<number, number[]>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     byList.set(row.list_id, [...(byList.get(row.list_id) ?? []), row.movie_id]);
   }
   return byList;

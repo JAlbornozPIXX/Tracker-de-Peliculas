@@ -1,4 +1,4 @@
-import type { Challenge, ChallengeFilter, ChallengeView } from '@/modules/challenges/utils/challenges';
+import type { Challenge, ChallengeFilter } from '@/modules/challenges/utils/challenges';
 import { supabase } from '@/utils/supabase';
 
 type ChallengeRow = {
@@ -58,18 +58,4 @@ export function extendChallenge(challengeId: number, endsOn: string) {
 
 export function deleteChallenge(challengeId: number) {
   return supabase.from('challenges').delete().eq('id', challengeId);
-}
-
-// Vistas del usuario entre dos días (inclusive) con los géneros de cada película.
-export async function getViewsBetween(userId: string, from: string, to: string): Promise<ChallengeView[]> {
-  const { data, error } = await supabase
-    .from('movie_views')
-    .select('movie_id, viewed_on, movies(genre)')
-    .eq('user_id', userId)
-    .gte('viewed_on', from)
-    .lte('viewed_on', to);
-
-  if (error) throw error;
-  const rows = (data ?? []) as unknown as { movie_id: number; viewed_on: string; movies: { genre: string[] } | null }[];
-  return rows.map((row) => ({ movieId: row.movie_id, viewedOn: row.viewed_on, genres: row.movies?.genre ?? [] }));
 }

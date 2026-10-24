@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChipOption, Chips } from '@/components/chips';
@@ -8,6 +8,7 @@ import { useAuth } from '@/modules/auth/context/AuthContext';
 import { getDistinctGenres } from '@/modules/movies/api/movies';
 import { RouletteMode } from '@/modules/random/components/roulette-mode';
 import { SimpleDrawMode } from '@/modules/random/components/simple-draw-mode';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 type Mode = 'simple' | 'roulette';
 
@@ -25,10 +26,11 @@ export default function Random() {
   const [genres, setGenres] = useState<string[]>([]);
 
   useEffect(() => {
-    getDistinctGenres()
+    if (!userId) return;
+    getDistinctGenres(userId)
       .then(setGenres)
-      .catch((err) => Alert.alert('No se pudieron cargar los géneros', err instanceof Error ? err.message : ''));
-  }, []);
+      .catch((err) => showAlert('No se pudieron cargar los géneros', errorMessage(err)));
+  }, [userId]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

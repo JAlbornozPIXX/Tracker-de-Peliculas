@@ -2,7 +2,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -26,6 +25,7 @@ import { sortListMovies } from '@/modules/lists/utils/list-order';
 import { getDistinctGenres } from '@/modules/movies/api/movies';
 import { getWatchedMovieIds } from '@/modules/movies/api/user-movies';
 import { withPendingWatchedIds } from '@/modules/sync/queue';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const POSTER_WIDTH = 132;
 const GRID_COLUMNS = 3;
@@ -89,7 +89,7 @@ export default function Lists() {
       Promise.all([
         getListsWithMovies(userId),
         getWatchedMovieIds(userId).catch(() => null),
-        getDistinctGenres().catch(() => null),
+        getDistinctGenres(userId).catch(() => null),
       ])
         .then(async ([listData, watched, genreData]) => {
           if (!active) return;
@@ -102,7 +102,7 @@ export default function Lists() {
           const withPending = await withPendingWatchedIds(userId, listedIds, watched);
           if (active) setWatchedIds(withPending);
         })
-        .catch((err) => Alert.alert('No se pudieron cargar tus listas', err instanceof Error ? err.message : ''))
+        .catch((err) => showAlert('No se pudieron cargar tus listas', errorMessage(err)))
         .finally(() => active && setLoading(false));
       return () => {
         active = false;
@@ -118,7 +118,7 @@ export default function Lists() {
       .catch((err) => {
         if (!active) return;
         setGenreResult({ genre, movies: [] });
-        Alert.alert('No se pudieron cargar las películas', err instanceof Error ? err.message : '');
+        showAlert('No se pudieron cargar las películas', errorMessage(err));
       });
     return () => {
       active = false;

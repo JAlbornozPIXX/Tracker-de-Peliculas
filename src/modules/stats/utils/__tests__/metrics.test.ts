@@ -14,6 +14,7 @@ function view(movieId: number, viewedOn: string, extra: Partial<ViewRecord> = {}
     title: `Película ${movieId}`,
     posterUrl: null,
     durationMinutes: 100,
+    genres: [],
     rating: null,
     ...extra,
   };

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -71,28 +71,36 @@ export default function Search() {
     [debouncedQuery, selectedGenreIds]
   );
 
-  useEffect(() => {
-    const hasQuery = debouncedQuery.length >= MIN_QUERY_LENGTH;
-    // Una búsqueda nueva descarta cualquier página siguiente en camino.
-    loadMoreController.current?.abort();
-    setLoadingMore(false);
+  // Una búsqueda nueva (otro texto u otras categorías) empieza de cero. Se
+  // ajusta durante el render y no en el efecto, así no se pinta un instante
+  // con los resultados de la búsqueda anterior.
+  const hasActiveSearch = debouncedQuery.length >= MIN_QUERY_LENGTH || selectedGenreIds.length > 0;
+  const searchKey = `${debouncedQuery}|${selectedGenreIds.join(',')}`;
+  const [currentSearch, setCurrentSearch] = useState(searchKey);
+  if (searchKey !== currentSearch) {
+    setCurrentSearch(searchKey);
+    setResults([]);
     setPage(1);
     setTotalPages(0);
+    setLoadingMore(false);
+    setError(null);
+    setLoading(hasActiveSearch);
+  }
 
-    if (!hasQuery && selectedGenreIds.length === 0) {
-      setResults([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+  // Una búsqueda nueva descarta cualquier página siguiente en camino. Va en un
+  // efecto de layout, que corre junto con el render: así esa página no
+  // alcanza a agregarse a los resultados de la búsqueda nueva.
+  useLayoutEffect(() => {
+    loadMoreController.current?.abort();
+  }, [searchKey]);
+
+  useEffect(() => {
+    if (debouncedQuery.length < MIN_QUERY_LENGTH && selectedGenreIds.length === 0) return;
 
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    setResults([]);
-
     fetchPage(1, controller.signal)
       .then((firstPage) => {
+        if (controller.signal.aborted) return;
         setResults(firstPage.results);
         setTotalPages(firstPage.totalPages);
       })

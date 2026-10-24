@@ -2,10 +2,13 @@ import { supabase } from '@/utils/supabase';
 
 export type ViewSource = 'manual' | 'auto';
 
+// pending: vista automática guardada solo en el teléfono (Terminada sin red);
+// tiene un id negativo provisorio y todavía no se puede borrar.
 export type ViewEntry = {
   id: number;
   viewedOn: string;
   source: ViewSource;
+  pending?: boolean;
 };
 
 type ViewRow = { id: number; viewed_on: string; source: ViewSource };
@@ -50,22 +53,26 @@ export async function addView(userId: string, movieId: number, viewedOn: string)
 }
 
 /**
- * Vista automática al pasar a Terminado. Devuelve null si ya había una
- * automática ese día: el índice único parcial la rechaza. No se usa upsert
- * porque PostgREST no puede apuntar on_conflict a un índice parcial.
+ * Vista automática al pasar a Terminado; la sube la cola de src/modules/sync,
+ * así funciona también sin red. Si ese día ya hay una vista (manual o
+ * automática) no suma otra. Una automática repetida la rechaza el índice
+ * único parcial y cuenta como guardada. No se usa upsert porque PostgREST no
+ * puede apuntar on_conflict a un índice parcial.
  */
-export async function addAutoView(userId: string, movieId: number, viewedOn: string): Promise<ViewEntry | null> {
-  const { data, error } = await supabase
+export async function addAutoViewIfNone(userId: string, movieId: number, viewedOn: string) {
+  const existing = await supabase
     .from('movie_views')
-    .insert({ user_id: userId, movie_id: movieId, viewed_on: viewedOn, source: 'auto' })
-    .select(VIEW_COLUMNS)
-    .single();
+    .select('id')
+    .eq('user_id', userId)
+    .eq('movie_id', movieId)
+    .eq('viewed_on', viewedOn)
+    .limit(1);
+  if (existing.error || (existing.data ?? []).length > 0) return { status: existing.status, error: existing.error };
 
-  if (error) {
-    if (error.code === UNIQUE_VIOLATION) return null;
-    throw error;
-  }
-  return toViewEntry(data);
+  const { error, status } = await supabase
+    .from('movie_views')
+    .insert({ user_id: userId, movie_id: movieId, viewed_on: viewedOn, source: 'auto' });
+  return error?.code === UNIQUE_VIOLATION ? { status, error: null } : { status, error };
 }
 
 export function deleteView(viewId: number) {

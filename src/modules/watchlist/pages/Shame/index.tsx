@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyNotice } from '@/components/empty-notice';
@@ -19,6 +19,7 @@ import {
 import { SwipeCard } from '@/modules/watchlist/components/swipe-card';
 import { isDeckDone, putBack, takeTop } from '@/modules/watchlist/utils/deck';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const UNDO_MS = 5000;
 
@@ -27,10 +28,6 @@ type Undo = { message: string; card: ShameMovie; run: () => Promise<void> };
 // La confirmación de borrado va dentro de la hoja: Alert con botones no
 // funciona en web.
 type Sheet = 'closed' | 'options' | 'confirm-delete';
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : '';
-}
 
 export default function Shame() {
   const router = useRouter();
@@ -96,7 +93,7 @@ export default function Shame() {
       // "Mantener" no tiene deshacer: no oculta el de un borrado anterior.
       if (nextUndo) setUndo(nextUndo);
     } catch (err) {
-      Alert.alert(errorTitle, errorMessage(err));
+      showAlert(errorTitle, errorMessage(err));
       setCardKey((key) => key + 1);
     } finally {
       setBusy(false);
@@ -137,7 +134,7 @@ export default function Shame() {
       setCards((prev) => putBack(prev, undo.card));
       setUndo(null);
     } catch (err) {
-      Alert.alert('No se pudo deshacer', errorMessage(err));
+      showAlert('No se pudo deshacer', errorMessage(err));
     } finally {
       setBusy(false);
     }

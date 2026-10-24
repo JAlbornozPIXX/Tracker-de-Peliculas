@@ -6,6 +6,7 @@ export type ViewRecord = {
   title: string;
   posterUrl: string | null;
   durationMinutes: number | null;
+  genres: string[];
   rating: number | null;
 };
 

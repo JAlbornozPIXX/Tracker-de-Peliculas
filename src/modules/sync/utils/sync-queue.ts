@@ -1,20 +1,25 @@
 import { ApplyOutcome, applyWrite, RemoteError, SyncRemote } from '@/modules/sync/utils/apply-write';
-import { mergeWrite, PendingWrite, writeKey } from '@/modules/sync/utils/pending-writes';
+import { mergeWrite, PendingWrite, pendingAutoViewDates, writeKey } from '@/modules/sync/utils/pending-writes';
 
 export type SyncStorage = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
 };
 
-export type SaveResult = 'saved' | 'pending';
+// superseded: el servidor ya tenía un cambio más reciente de ese dato y se quedó con ese.
+export type SaveResult = 'saved' | 'pending' | 'superseded';
 
 const storageKey = (userId: string) => `cineteca:pending-writes:v1:${userId}`;
 
+const KNOWN_KINDS = new Set<string>(['user_movie', 'reaction', 'auto_view'] satisfies PendingWrite['kind'][]);
+
+// Una entrada que esta versión no conoce (p. ej. guardada por una versión más
+// nueva) se descarta: no hay cómo subirla y trabaría el resto de la cola.
 function parseStored(raw: string | null): PendingWrite[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter((write) => KNOWN_KINDS.has(write?.kind)) : [];
   } catch {
     return [];
   }
@@ -32,9 +37,11 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
   let flushing: Promise<void> | null = null;
   let flushAgain = false;
   const listeners = new Set<() => void>();
-  const discardListeners = new Set<(movieId: number) => void>();
+  const discardListeners = new Set<(movieId: number, kind: PendingWrite['kind']) => void>();
   // Rechazos del servidor, para que save() los devuelva como error a la UI.
   const rejections = new WeakMap<PendingWrite, RemoteError>();
+  // Escrituras que perdieron contra un cambio más reciente del servidor.
+  const superseded = new WeakSet<PendingWrite>();
 
   function notify() {
     listeners.forEach((listener) => listener());
@@ -91,11 +98,12 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
       if (outcome.type === 'retry') return;
 
       if (outcome.type === 'rejected') rejections.set(write, outcome.error);
+      if (outcome.type === 'superseded') superseded.add(write);
       // Por identidad: si se combinó con un cambio nuevo mientras subía, ese queda.
       queue = queue.filter((entry) => entry !== write);
       notify();
       await persist(forUser);
-      if (outcome.type !== 'saved') discardListeners.forEach((listener) => listener(write.movieId));
+      if (outcome.type !== 'saved') discardListeners.forEach((listener) => listener(write.movieId, write.kind));
     }
   }
 
@@ -119,7 +127,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
 
   /**
    * Guarda el cambio en el teléfono e intenta subirlo. Devuelve 'pending' si
-   * quedó para después; lanza el error si el servidor lo rechazó.
+   * quedó para después y 'superseded' si el servidor tenía uno más reciente;
+   * lanza el error si el servidor lo rechazó.
    */
   async function save(forUser: string, write: PendingWrite): Promise<SaveResult> {
     await setUser(forUser);
@@ -133,7 +142,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
     const error = rejections.get(entry);
     // Supabase devuelve objetos planos: como Error, la UI puede mostrar el mensaje.
     if (error) throw new Error(error.message);
-    return queue.some((item) => writeKey(item) === key) ? 'pending' : 'saved';
+    if (queue.some((item) => writeKey(item) === key)) return 'pending';
+    return superseded.has(entry) ? 'superseded' : 'saved';
   }
 
   async function pendingFor(forUser: string, movieId: number): Promise<PendingWrite[]> {
@@ -147,6 +157,8 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
     flush,
     pendingFor,
     hasPending: (movieId: number) => queue.some((write) => write.movieId === movieId),
+    /** Días de las vistas automáticas de la película que todavía no se suben. */
+    pendingAutoViewDates: (movieId: number) => pendingAutoViewDates(queue.filter((write) => write.movieId === movieId)),
     pendingCount: () => queue.length,
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -154,8 +166,11 @@ export function createSyncQueue({ storage, remote }: { storage: SyncStorage; rem
         listeners.delete(listener);
       };
     },
-    /** Avisa cuando un cambio pendiente se descarta porque el servidor tenía uno más nuevo o lo rechazó. */
-    subscribeDiscarded(listener: (movieId: number) => void) {
+    /**
+     * Avisa cuando un cambio pendiente se descarta porque el servidor tenía
+     * uno más nuevo o lo rechazó. kind dice qué dato volver a leer.
+     */
+    subscribeDiscarded(listener: (movieId: number, kind: PendingWrite['kind']) => void) {
       discardListeners.add(listener);
       return () => {
         discardListeners.delete(listener);

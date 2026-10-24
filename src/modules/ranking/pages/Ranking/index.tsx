@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChipOption, Chips } from '@/components/chips';
@@ -22,6 +22,7 @@ import {
   RankingFilters,
   sortRanking,
 } from '@/modules/ranking/utils/ranking';
+import { errorMessage, showAlert } from '@/utils/alert';
 
 const POSTER_SIZE = 64;
 
@@ -103,7 +104,7 @@ export default function Ranking() {
           setLists(listData);
           setReactions(reactionData);
         })
-        .catch((err) => Alert.alert('No se pudo cargar el ranking', err instanceof Error ? err.message : ''))
+        .catch((err) => showAlert('No se pudo cargar el ranking', errorMessage(err)))
         .finally(() => active && setLoading(false));
       return () => {
         active = false;
