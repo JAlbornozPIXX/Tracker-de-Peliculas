@@ -1,9 +1,10 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyNotice } from '@/components/empty-notice';
+import { HomeBackButton } from '@/components/home-back-button';
 import { ProgressBar } from '@/components/progress-bar';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { deleteChallenge, extendChallenge, getChallenges, getViewsBetween } from '@/modules/challenges/api/challenges';
@@ -126,7 +127,6 @@ function ChallengeCard({
 }
 
 export default function Challenges() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user.id;
@@ -266,9 +266,7 @@ export default function Challenges() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Volver" onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backIcon}>‹</Text>
-        </Pressable>
+        <HomeBackButton />
         <View style={styles.headerText}>
           <Text style={styles.title}>Retos</Text>
           <Text style={styles.count}>{plural(challenges.length, 'reto', 'retos')}</Text>
@@ -380,8 +378,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0B0B0F' },
   loadingScreen: { flex: 1, backgroundColor: '#0B0B0F', justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14 },
-  backButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: '#F4F4F5', fontSize: 22, lineHeight: 22 },
   headerText: { flex: 1 },
   title: { color: '#F4F4F5', fontSize: 21, fontWeight: '800' },
   count: { color: '#7D7382', fontSize: 12, marginTop: 2 },

@@ -9,6 +9,8 @@ export type BottomBarTab = 'home' | 'search' | 'lists' | 'profile';
 // inset inferior) para que la barra flotante no tape los últimos elementos.
 export const BOTTOM_BAR_SPACE = 112;
 
+const TAB_ROUTES = { search: '/search', lists: '/lists' } as const;
+
 const TABS: { key: BottomBarTab; icon: string; label: string }[] = [
   { key: 'home', icon: '⌂', label: 'Inicio' },
   { key: 'search', icon: '⌕', label: 'Descubre' },
@@ -38,11 +40,11 @@ export function BottomBar({ active }: { active: BottomBarTab }) {
     } else if (tab === 'profile') {
       router.push('/profile');
     } else if (active === 'home') {
-      router.push(tab === 'search' ? '/search' : '/lists');
+      router.push(TAB_ROUTES[tab]);
     } else {
       // Entre Descubre y Listas se reemplaza la pantalla para que "volver"
       // siempre regrese a Inicio en vez de acumular pantallas.
-      router.replace(tab === 'search' ? '/search' : '/lists');
+      router.replace(TAB_ROUTES[tab]);
     }
   }
 

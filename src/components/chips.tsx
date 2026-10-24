@@ -50,7 +50,46 @@ export function Chips<K extends string | number | null>({
   );
 }
 
+/**
+ * Fila de chips de selección múltiple que se desliza en horizontal. Con max
+ * los chips no elegidos se deshabilitan al llegar al tope.
+ */
+export function ToggleChips<K extends string | number>({
+  options,
+  values,
+  onChange,
+  max,
+}: {
+  options: readonly ChipOption<K>[];
+  values: readonly K[];
+  onChange: (next: K[]) => void;
+  max?: number;
+}) {
+  const full = max != null && values.length >= max;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      {options.map((option) => {
+        const selected = values.includes(option.key);
+        const disabled = full && !selected;
+        return (
+          <Pressable
+            key={String(option.key)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected, disabled }}
+            accessibilityLabel={option.label}
+            disabled={disabled}
+            onPress={() => onChange(selected ? values.filter((v) => v !== option.key) : [...values, option.key])}
+            style={[styles.chip, selected && styles.chipActive, disabled && styles.chipDisabled]}>
+            <Text style={[styles.chipText, selected && styles.chipTextActive]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
+  chipDisabled: { opacity: 0.4 },
   row: { gap: 8 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
