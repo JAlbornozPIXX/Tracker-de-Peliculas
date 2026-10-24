@@ -181,7 +181,7 @@ export default function ListDetail() {
                   </Pressable>
                 )}
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item, index }) => (
             <View style={styles.itemRow}>

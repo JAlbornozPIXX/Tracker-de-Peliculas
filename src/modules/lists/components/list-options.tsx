@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View, type ViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Chips } from '@/components/chips';
@@ -26,7 +26,7 @@ export function ListOptions({
   onDeleted: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const buttonRef = useRef<View>(null);
+  const buttonRef = useRef<ViewInstance>(null);
 
   const [dialog, setDialog] = useState<'none' | 'menu' | 'rename' | 'kind' | 'delete'>('none');
   const [menuTop, setMenuTop] = useState(0);
@@ -113,7 +113,9 @@ export function ListOptions({
         statusBarTranslucent
         animationType="fade"
         visible={dialog !== 'none'}
-        onRequestClose={() => !saving && setDialog('none')}>
+        onRequestClose={() => {
+          if (!saving) setDialog('none');
+        }}>
         <Pressable
           accessibilityLabel="Cerrar"
           disabled={saving}

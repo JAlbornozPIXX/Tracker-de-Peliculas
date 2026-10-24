@@ -49,7 +49,9 @@ export function CreateListDialog({
       statusBarTranslucent
       animationType="fade"
       visible
-      onRequestClose={() => !saving && onClose()}>
+      onRequestClose={() => {
+        if (!saving) onClose();
+      }}>
       <Pressable accessibilityLabel="Cerrar" disabled={saving} onPress={onClose} style={styles.backdrop} />
       <View style={[styles.dialog, { top: insets.top + 90 }]}>
         <Text style={styles.title}>Nueva lista</Text>

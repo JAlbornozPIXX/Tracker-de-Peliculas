@@ -322,7 +322,9 @@ export default function Challenges() {
         statusBarTranslucent
         animationType="fade"
         visible={extending != null}
-        onRequestClose={() => !savingExtension && setExtending(null)}>
+        onRequestClose={() => {
+          if (!savingExtension) setExtending(null);
+        }}>
         <Pressable
           accessibilityLabel="Cerrar"
           disabled={savingExtension}
