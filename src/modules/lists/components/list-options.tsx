@@ -2,30 +2,35 @@ import { useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { deleteList, LIST_NAME_MAX, renameList } from '@/modules/lists/api/lists';
+import { Chips } from '@/components/chips';
+import { changeListKind, deleteList, LIST_NAME_MAX, renameList } from '@/modules/lists/api/lists';
+import { LIST_KINDS, ListKind } from '@/modules/lists/constants/kinds';
 
 /**
- * Botón de tres puntos con las opciones de una lista: cambiar nombre y
- * eliminar. Alert con botones no funciona en web, así que el menú y las
+ * Botón de tres puntos con las opciones de una lista: cambiar nombre, cambiar
+ * tipo y eliminar. Alert con botones no funciona en web, así que el menú y las
  * confirmaciones se muestran en un Modal propio.
  */
 export function ListOptions({
   list,
   compact = false,
   onRenamed,
+  onKindChanged,
   onDeleted,
 }: {
-  list: { id: number; name: string };
+  list: { id: number; name: string; kind: ListKind };
   compact?: boolean;
   onRenamed: (name: string) => void;
+  onKindChanged: (kind: ListKind) => void;
   onDeleted: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const buttonRef = useRef<View>(null);
 
-  const [dialog, setDialog] = useState<'none' | 'menu' | 'rename' | 'delete'>('none');
+  const [dialog, setDialog] = useState<'none' | 'menu' | 'rename' | 'kind' | 'delete'>('none');
   const [menuTop, setMenuTop] = useState(0);
   const [draftName, setDraftName] = useState('');
+  const [draftKind, setDraftKind] = useState<ListKind>(list.kind);
   const [saving, setSaving] = useState(false);
 
   const trimmedDraftName = draftName.trim();
@@ -55,6 +60,27 @@ export function ListOptions({
     }
     setDialog('none');
     onRenamed(trimmedDraftName);
+  }
+
+  function openKind() {
+    setDraftKind(list.kind);
+    setDialog('kind');
+  }
+
+  async function handleKindChange() {
+    if (draftKind === list.kind) {
+      setDialog('none');
+      return;
+    }
+    setSaving(true);
+    const { error } = await changeListKind(list.id, draftKind);
+    setSaving(false);
+    if (error) {
+      Alert.alert('No se pudo cambiar el tipo', error.message);
+      return;
+    }
+    setDialog('none');
+    onKindChanged(draftKind);
   }
 
   async function handleDelete() {
@@ -100,6 +126,10 @@ export function ListOptions({
               <Text style={styles.menuItemText}>Cambiar nombre</Text>
             </Pressable>
             <View style={styles.menuDivider} />
+            <Pressable accessibilityRole="button" onPress={openKind} style={styles.menuItem}>
+              <Text style={styles.menuItemText}>Cambiar tipo</Text>
+            </Pressable>
+            <View style={styles.menuDivider} />
             <Pressable accessibilityRole="button" onPress={() => setDialog('delete')} style={styles.menuItem}>
               <Text style={[styles.menuItemText, styles.dangerText]}>Eliminar lista</Text>
             </Pressable>
@@ -132,6 +162,30 @@ export function ListOptions({
                 disabled={!canRename}
                 onPress={handleRename}
                 style={[styles.dialogButton, styles.dialogButtonPrimary, !canRename && styles.dialogButtonDisabled]}>
+                <Text style={[styles.dialogButtonText, styles.dialogButtonPrimaryText]}>
+                  {saving ? 'Guardando…' : 'Guardar'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {dialog === 'kind' && (
+          <View style={[styles.dialog, { top: insets.top + 110 }]}>
+            <Text style={styles.dialogTitle}>Tipo de lista</Text>
+            <Text style={styles.dialogCopy}>Playlists y colecciones muestran su avance y se pueden ordenar a mano.</Text>
+            <View style={styles.dialogChips}>
+              <Chips options={LIST_KINDS} value={draftKind} onChange={setDraftKind} />
+            </View>
+            <View style={styles.dialogActions}>
+              <Pressable accessibilityRole="button" disabled={saving} onPress={() => setDialog('none')} style={styles.dialogButton}>
+                <Text style={styles.dialogButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={handleKindChange}
+                style={[styles.dialogButton, styles.dialogButtonPrimary]}>
                 <Text style={[styles.dialogButtonText, styles.dialogButtonPrimaryText]}>
                   {saving ? 'Guardando…' : 'Guardar'}
                 </Text>
@@ -178,6 +232,7 @@ const styles = StyleSheet.create({
   dialog: { position: 'absolute', left: 24, right: 24, padding: 18, borderRadius: 18, backgroundColor: '#1C1822', borderWidth: 1, borderColor: '#292431' },
   dialogTitle: { color: '#F4F4F5', fontSize: 17, fontWeight: '800' },
   dialogCopy: { color: '#A1A1AA', fontSize: 13, lineHeight: 19, marginTop: 8 },
+  dialogChips: { marginTop: 14 },
   dialogInput: { height: 46, marginTop: 14, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', color: '#F4F4F5', fontSize: 14 },
   dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
   dialogButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: '#292431' },

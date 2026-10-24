@@ -11,7 +11,17 @@ const ACCENT = '#B94DFF';
  * el selector compacto en línea; en Android abre el diálogo nativo al tocar.
  * En web DateTimePicker no renderiza nada: ver date-field.web.tsx.
  */
-export function DateField({ value, max, onChange }: { value: string; max: string; onChange: (next: string) => void }) {
+export function DateField({
+  value,
+  max,
+  onChange,
+  label = 'Fecha de la vista',
+}: {
+  value: string;
+  max: string;
+  onChange: (next: string) => void;
+  label?: string;
+}) {
   const [androidOpen, setAndroidOpen] = useState(false);
 
   if (Platform.OS === 'android') {
@@ -19,7 +29,7 @@ export function DateField({ value, max, onChange }: { value: string; max: string
       <>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Fecha de la vista: ${formatViewDate(value)}`}
+          accessibilityLabel={`${label}: ${formatViewDate(value)}`}
           onPress={() => setAndroidOpen(true)}
           style={styles.field}>
           <Text style={styles.fieldText}>{formatViewDate(value)}</Text>

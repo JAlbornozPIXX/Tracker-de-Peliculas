@@ -78,3 +78,15 @@ export async function getDisqualifiedMovieIds(userId: string): Promise<number[]>
   if (error) throw error;
   return (data ?? []).map((row) => row.movie_id);
 }
+
+// Ids de las películas Terminadas; con movieIds se limita a esas películas.
+export async function getWatchedMovieIds(userId: string, movieIds?: number[]): Promise<Set<number>> {
+  if (movieIds?.length === 0) return new Set();
+
+  let query = supabase.from('user_movies').select('movie_id').eq('user_id', userId).eq('status', 'watched');
+  if (movieIds) query = query.in('movie_id', movieIds);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.movie_id));
+}
