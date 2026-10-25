@@ -1,8 +1,14 @@
+import { withTimeout } from '@/utils/with-timeout';
+
 const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_LANGUAGE = 'es-MX';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const TMDB_POSTER_LARGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+
+// Tiempo máximo de espera de TheMovieDB: si no responde, la búsqueda muestra
+// el error con «Reintentar» en vez de quedar cargando (AC-10).
+export const TMDB_TIMEOUT_MS = 10_000;
 
 export type MovieResultType = 'movie' | 'tv';
 
@@ -77,6 +83,20 @@ export class TmdbConfigError extends Error {
   }
 }
 
+// GET a TheMovieDB con tiempo máximo. Un estado HTTP de error lanza su código.
+function tmdbGet<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
+  return withTimeout(
+    async (timedSignal) => {
+      const response = await fetch(`${TMDB_BASE_URL}${path}?${params.toString()}`, { signal: timedSignal });
+      if (!response.ok) {
+        throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
+      }
+      return (await response.json()) as T;
+    },
+    { signal, timeoutMs: TMDB_TIMEOUT_MS }
+  );
+}
+
 function getPosterUrl(posterPath: string | null): string | null {
   return posterPath ? `${TMDB_IMAGE_BASE_URL}${posterPath}` : null;
 }
@@ -121,13 +141,7 @@ export async function searchMovies(
     page: String(page),
   });
 
-  const response = await fetch(`${TMDB_BASE_URL}/search/multi?${params.toString()}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
-  }
-
-  const data = (await response.json()) as TmdbMultiSearchResponse;
+  const data = await tmdbGet<TmdbMultiSearchResponse>('/search/multi', params, signal);
 
   const results = data.results
     .filter(isMovieOrTv)
@@ -154,13 +168,7 @@ export async function getMovieGenres(signal?: AbortSignal): Promise<Genre[]> {
   }
 
   const params = new URLSearchParams({ api_key: TMDB_API_KEY, language: TMDB_LANGUAGE });
-  const response = await fetch(`${TMDB_BASE_URL}/genre/movie/list?${params.toString()}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
-  }
-
-  const data = (await response.json()) as { genres: Genre[] };
+  const data = await tmdbGet<{ genres: Genre[] }>('/genre/movie/list', params, signal);
   return data.genres;
 }
 
@@ -189,13 +197,7 @@ export async function discoverMoviesByGenres(
     page: String(page),
   });
 
-  const response = await fetch(`${TMDB_BASE_URL}/discover/movie?${params.toString()}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
-  }
-
-  const data = (await response.json()) as TmdbMultiSearchResponse;
+  const data = await tmdbGet<TmdbMultiSearchResponse>('/discover/movie', params, signal);
 
   const results: MovieResult[] = data.results.map((item) => ({
     id: item.id,
@@ -223,13 +225,7 @@ export async function getMovieDetails(
   }
 
   const params = new URLSearchParams({ api_key: TMDB_API_KEY, language: TMDB_LANGUAGE });
-  const response = await fetch(`${TMDB_BASE_URL}/${mediaType}/${id}?${params.toString()}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
-  }
-
-  const data = (await response.json()) as TmdbDetailsResponse;
+  const data = await tmdbGet<TmdbDetailsResponse>(`/${mediaType}/${id}`, params, signal);
   const isMovie = mediaType === 'movie';
   const releaseDate = (isMovie ? data.release_date : data.first_air_date) || null;
 

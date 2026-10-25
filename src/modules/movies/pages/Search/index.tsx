@@ -36,7 +36,9 @@ export default function Search() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // canRetry: «Reintentar» no sirve si lo que falta es la clave de TheMovieDB.
+  const [error, setError] = useState<{ message: string; canRetry: boolean } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
@@ -95,6 +97,7 @@ export default function Search() {
     loadMoreController.current?.abort();
   }, [searchKey]);
 
+  // attempt cambia con «Reintentar»: vuelve a pedir la primera página.
   useEffect(() => {
     if (debouncedQuery.length < MIN_QUERY_LENGTH && selectedGenreIds.length === 0) return;
 
@@ -112,8 +115,8 @@ export default function Search() {
         setResults([]);
         setError(
           err instanceof TmdbConfigError
-            ? err.message
-            : 'No se pudo completar la búsqueda. Intenta nuevamente.'
+            ? { message: err.message, canRetry: false }
+            : { message: 'No se pudo completar la búsqueda. Intenta nuevamente.', canRetry: true }
         );
       })
       .finally(() => {
@@ -123,7 +126,13 @@ export default function Search() {
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, selectedGenreIds, fetchPage]);
+  }, [debouncedQuery, selectedGenreIds, fetchPage, attempt]);
+
+  function handleRetry() {
+    setError(null);
+    setLoading(true);
+    setAttempt((current) => current + 1);
+  }
 
   // Al llegar al final de la lista se pide la página siguiente y se agrega
   // debajo de lo que ya está en pantalla.
@@ -257,7 +266,14 @@ export default function Search() {
           loading ? (
             <ActivityIndicator color="#B94DFF" size="large" style={styles.stateSpacing} />
           ) : error ? (
-            <Text style={[styles.stateText, styles.errorText, styles.stateSpacing]}>{error}</Text>
+            <View style={styles.stateSpacing}>
+              <Text style={[styles.stateText, styles.errorText]}>{error.message}</Text>
+              {error.canRetry && (
+                <Pressable accessibilityRole="button" onPress={handleRetry} style={styles.retryButton}>
+                  <Text style={styles.retryText}>Reintentar</Text>
+                </Pressable>
+              )}
+            </View>
           ) : showEmptyState ? (
             <Text style={[styles.stateText, styles.stateSpacing]}>
               {hasDebouncedQuery
@@ -330,4 +346,16 @@ const styles = StyleSheet.create({
   stateSpacing: { marginTop: 60 },
   stateText: { color: '#8F8795', fontSize: 14, textAlign: 'center', lineHeight: 20 },
   errorText: { color: '#F87171' },
+  retryButton: {
+    alignSelf: 'center',
+    minWidth: 140,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: '#A83BDD',
+  },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });
