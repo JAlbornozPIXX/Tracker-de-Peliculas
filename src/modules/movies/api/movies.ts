@@ -85,17 +85,23 @@ export async function getDistinctGenres(userId: string): Promise<string[]> {
   return Array.from(genres).sort();
 }
 
-export type RouletteFilters = {
-  genre: string | null;
-  maxDurationMinutes: number | null;
-};
-
 export async function getMoviesByIds(movieIds: number[]): Promise<MovieRow[]> {
   return fetchByIdChunks(movieIds, async (ids) => {
     const { data, error } = await supabase.from('movies').select(MOVIE_COLUMNS).in('id', ids);
     if (error) throw error;
     return (data ?? []) as MovieRow[];
   });
+}
+
+// Ids de TheMovieDB de las que son películas de ahí; las series y las del seed
+// (sin tmdb_id) quedan fuera.
+export async function getTmdbMovieIds(movieIds: number[]): Promise<number[]> {
+  const rows = await fetchByIdChunks(movieIds, async (ids) => {
+    const { data, error } = await supabase.from('movies').select('tmdb_id').in('id', ids).eq('media_type', 'movie');
+    if (error) throw error;
+    return (data ?? []) as { tmdb_id: number }[];
+  });
+  return rows.map((row) => row.tmdb_id);
 }
 
 // RN-03: el catálogo del usuario son las películas con seguimiento
@@ -127,33 +133,4 @@ async function getCatalogMovieIds(userId: string): Promise<Set<number>> {
 export async function getCatalogMovies(userId: string): Promise<MovieRow[]> {
   const movies = await getMoviesByIds([...(await getCatalogMovieIds(userId))]);
   return movies.sort((a, b) => a.title.localeCompare(b.title));
-}
-
-/**
- * Películas del catálogo del usuario que cumplen los filtros de la ruleta,
- * sin las de excludedMovieIds. Sin duración conocida no pasan un tope de minutos.
- */
-export async function getEligibleMovies(
-  userId: string,
-  excludedMovieIds: number[],
-  filters: RouletteFilters
-): Promise<MovieRow[]> {
-  const excluded = new Set(excludedMovieIds);
-  const catalogIds = [...(await getCatalogMovieIds(userId))].filter((id) => !excluded.has(id));
-
-  return fetchByIdChunks(catalogIds, async (ids) => {
-    let query = supabase.from('movies').select(MOVIE_COLUMNS).in('id', ids);
-
-    if (filters.genre) {
-      query = query.contains('genre', [filters.genre]);
-    }
-
-    if (filters.maxDurationMinutes != null) {
-      query = query.lte('duration_minutes', filters.maxDurationMinutes);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data ?? []) as MovieRow[];
-  });
 }
