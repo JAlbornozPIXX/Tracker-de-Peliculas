@@ -36,13 +36,17 @@ npx expo prebuild --clean
 npm run android
 ```
 
-Antes de abrir un pull request, comprueba tipos, pruebas y lint (la CI de GitHub ejecuta los tres):
+Antes de abrir un pull request, comprueba tipos, pruebas y lint:
 
 ```bash
 npx tsc --noEmit
 npm test
 npm run lint
 ```
+
+La CI de GitHub ejecuta esos tres y ademas prueba la base: `supabase/tests/run.sh` corre `schema.sql` dos veces en un PostgreSQL vacio, la prueba de RLS entre dos usuarios (`rls.sql`, T-12) y el seed con sus numeros. Para correrla en tu equipo, apunta las variables de `psql` (`PGHOST`, `PGUSER`, `PGDATABASE`...) a una base local vacia, nunca a Supabase, y ejecuta `sh supabase/tests/run.sh`.
+
+`main` esta protegida: un pull request necesita la aprobacion de otra persona del equipo y la CI en verde para integrarse. La plantilla de pull request pide el issue, los criterios de aceptacion que cubre y la evidencia.
 
 La pantalla de inicio de sesion ya usa `supabase.auth.signInWithPassword`, el registro usa `signUp` y la recuperacion usa `resetPasswordForEmail`.
 
