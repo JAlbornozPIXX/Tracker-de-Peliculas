@@ -8,6 +8,15 @@ import { confirmUnsavedChanges, showAlert } from '@/utils/alert';
 import { usePreventRemove } from 'expo-router';
 
 const mockRegisterAutoView = jest.fn(async (_movieId: number) => {});
+// Cola de sincronización simulada: si hay cambios de la película en el teléfono.
+const mockQueue = {
+  pending: false,
+  listeners: new Set<() => void>(),
+  setPending(pending: boolean) {
+    mockQueue.pending = pending;
+    mockQueue.listeners.forEach((listener) => listener());
+  },
+};
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: '7' }),
@@ -54,9 +63,12 @@ jest.mock('@/modules/sync/queue', () => ({
   withPendingUserMovie: async (_userId: string, _movieId: number, row: unknown) => row,
   withPendingReactions: async (_userId: string, _movieId: number, ids: number[]) => ids,
   syncQueue: {
-    subscribe: () => () => {},
+    subscribe(listener: () => void) {
+      mockQueue.listeners.add(listener);
+      return () => mockQueue.listeners.delete(listener);
+    },
     subscribeDiscarded: () => () => {},
-    hasPending: () => false,
+    hasPending: () => mockQueue.pending,
   },
 }));
 jest.mock('@/utils/alert', () => ({
@@ -114,11 +126,33 @@ beforeEach(() => jest.useFakeTimers());
 afterEach(() => {
   act(() => mounted?.unmount());
   mounted = null;
+  mockQueue.pending = false;
+  mockQueue.listeners.clear();
   jest.useRealTimers();
   jest.clearAllMocks();
 });
 
 describe('MovieDetail', () => {
+  it('la pastilla de pendiente va en la fila de Volver y solo aparece si el cambio sigue en el teléfono', async () => {
+    const renderer = await renderDetail();
+    const PILL = 'Pendiente de sincronizar';
+
+    // Con red el cambio sube enseguida: un pendiente breve no muestra nada.
+    act(() => mockQueue.setPending(true));
+    act(() => mockQueue.setPending(false));
+    act(() => mockQueue.setPending(true));
+    expect(texts(renderer)).not.toContain(PILL);
+
+    act(() => jest.advanceTimersByTime(800));
+    expect(texts(renderer)).toContain(PILL);
+    // Comparte la fila (de alto fijo) con el botón Volver: no corre el resto.
+    const headerRow = pressable(renderer, 'Volver').parent!;
+    expect(headerRow.findAllByType(Text).some((text) => text.props.children === PILL)).toBe(true);
+
+    act(() => mockQueue.setPending(false));
+    expect(texts(renderer)).not.toContain(PILL);
+  });
+
   it('estrellas, nota y listas no se guardan hasta tocar Guardar, y ahí van juntas', async () => {
     const renderer = await renderDetail();
     expect(pressable(renderer, 'Guardar').props.disabled).toBe(true);
