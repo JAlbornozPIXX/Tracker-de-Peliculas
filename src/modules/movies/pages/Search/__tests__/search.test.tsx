@@ -30,11 +30,14 @@ function button(renderer: ReactTestRenderer, label: string): ReactTestInstance |
   return node ?? undefined;
 }
 
+let mounted: ReactTestRenderer | null = null;
+
 async function renderAndSearch(text: string) {
   let renderer!: ReactTestRenderer;
   await act(async () => {
     renderer = create(<Search />);
   });
+  mounted = renderer;
   act(() => renderer.root.findByType(TextInput).props.onChangeText(text));
   // Pasa la espera de la búsqueda (debounce) y llega la respuesta.
   await act(async () => {
@@ -45,8 +48,12 @@ async function renderAndSearch(text: string) {
 
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => {
+  act(() => mounted?.unmount());
+  mounted = null;
   jest.useRealTimers();
   jest.clearAllMocks();
+  // Si una prueba falla a mitad, sus respuestas encoladas no pasan a la siguiente.
+  jest.mocked(searchMovies).mockReset();
 });
 
 describe('Search (AC-10)', () => {
