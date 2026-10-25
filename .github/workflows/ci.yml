@@ -28,3 +28,29 @@ jobs:
 
       - name: Pruebas unitarias
         run: npx jest --ci
+
+  # T-12 y el seed: schema.sql en un PostgreSQL vacío con lo mínimo de Supabase.
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Esquema, RLS (T-12) y seed
+        run: sh supabase/tests/run.sh
