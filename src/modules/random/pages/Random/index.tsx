@@ -5,7 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChipOption, Chips } from '@/components/chips';
 import { HomeBackButton } from '@/components/home-back-button';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import { getDistinctGenres } from '@/modules/movies/api/movies';
+import { getMovieGenres, type Genre } from '@/modules/movies/api/tmdb';
 import { RouletteMode } from '@/modules/random/components/roulette-mode';
 import { SimpleDrawMode } from '@/modules/random/components/simple-draw-mode';
 import { errorMessage, showAlert } from '@/utils/alert';
@@ -23,14 +23,20 @@ export default function Random() {
   const userId = session?.user.id;
 
   const [mode, setMode] = useState<Mode>('roulette');
-  const [genres, setGenres] = useState<string[]>([]);
+  // Géneros de TheMovieDB, de donde salen ruleta y sorteo; null mientras cargan.
+  const [genres, setGenres] = useState<Genre[] | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
-    getDistinctGenres(userId)
-      .then(setGenres)
-      .catch((err) => showAlert('No se pudieron cargar los géneros', errorMessage(err)));
-  }, [userId]);
+    const controller = new AbortController();
+    getMovieGenres(controller.signal)
+      .then((tmdbGenres) => setGenres([...tmdbGenres].sort((a, b) => a.name.localeCompare(b.name, 'es'))))
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setGenres([]);
+        showAlert('No se pudieron cargar los géneros', errorMessage(err));
+      });
+    return () => controller.abort();
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -49,10 +55,10 @@ export default function Random() {
         {userId && (
           <>
             <View style={mode !== 'simple' && styles.hidden}>
-              <SimpleDrawMode userId={userId} />
+              <SimpleDrawMode userId={userId} genres={genres} />
             </View>
             <View style={mode !== 'roulette' && styles.hidden}>
-              <RouletteMode userId={userId} genres={genres} />
+              <RouletteMode userId={userId} genres={genres ?? []} />
             </View>
           </>
         )}

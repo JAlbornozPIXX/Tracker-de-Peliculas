@@ -2,108 +2,54 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import {
-  createReaction,
-  getReactionIdsForMovie,
-  getReactions,
-  Reaction,
-  REACTION_EMOJI_MAX,
-  REACTION_NAME_MAX,
-} from '@/modules/movies/api/reactions';
-import { saveMovieReaction, syncQueue, withPendingReactions } from '@/modules/sync/queue';
+import { createReaction, getReactions, Reaction, REACTION_EMOJI_MAX, REACTION_NAME_MAX } from '@/modules/movies/api/reactions';
 import { errorMessage, showAlert } from '@/utils/alert';
 
 const PREVIEW_COUNT = 3;
 
-// Los marcados en el servidor más los cambios que siguen pendientes en el teléfono.
-async function loadSelectedIds(userId: string, movieId: number) {
-  return withPendingReactions(userId, movieId, await getReactionIdsForMovie(userId, movieId));
-}
-
 /**
  * Botón que muestra los calificadores marcados y abre un Modal para activar,
- * desactivar o crear calificadores. Cada cambio se guarda al instante.
- * movieId es el id interno de movies, o null si el título todavía no existe
- * ahí; en ese caso ensureMovieId lo crea al marcar el primer calificador.
+ * desactivar o crear calificadores. Solo marca la selección: la ficha la
+ * guarda al tocar Guardar. Crear uno nuevo sí se guarda al instante y queda
+ * marcado.
  */
 export function ReactionPicker({
-  movieId,
-  ensureMovieId,
+  selectedIds,
+  onToggle,
 }: {
-  movieId: number | null;
-  ensureMovieId: () => Promise<number>;
+  selectedIds: number[];
+  onToggle: (reactionId: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user.id;
 
   const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [dialog, setDialog] = useState<'none' | 'pick' | 'create'>('none');
   const [draftEmoji, setDraftEmoji] = useState('');
   const [draftName, setDraftName] = useState('');
   const [saving, setSaving] = useState(false);
-  const writes = useWriteTracker();
 
   const trimmedEmoji = draftEmoji.trim();
   const trimmedName = draftName.trim();
   const canCreate = trimmedEmoji.length > 0 && trimmedName.length > 0 && !saving;
 
-  // movieId cambia de null al id nuevo durante la primera marca de un título
-  // de TheMovieDB: esa carga no debe pisar la marca en curso, así que espera a
-  // que termine (y se repite si se cruza con otra).
   useEffect(() => {
     if (!userId) return;
-    return writes.loadWhenIdle(
-      () => Promise.all([getReactions(), movieId != null ? loadSelectedIds(userId, movieId) : []]),
-      ([allReactions, reactionIds]) => {
+    let active = true;
+    getReactions()
+      .then((allReactions) => {
+        if (!active) return;
         setReactions(allReactions);
-        setSelectedIds(reactionIds);
         setLoaded(true);
-      },
-      (err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err))
-    );
-  }, [userId, movieId, writes]);
-
-  // Un calificador pendiente que el servidor rechazó o que perdió contra un
-  // cambio más reciente: se vuelve a lo guardado, cuando no quede una marca
-  // en curso.
-  useEffect(() => {
-    if (!userId || movieId == null) return;
-    let cancelReload = () => {};
-    const unsubscribe = syncQueue.subscribeDiscarded((discardedId, kind) => {
-      if (discardedId !== movieId || kind !== 'reaction') return;
-      cancelReload();
-      cancelReload = writes.loadWhenIdle(() => loadSelectedIds(userId, movieId), setSelectedIds);
-    });
+      })
+      .catch((err) => showAlert('No se pudieron cargar los calificadores', errorMessage(err)));
     return () => {
-      unsubscribe();
-      cancelReload();
+      active = false;
     };
-  }, [userId, movieId, writes]);
-
-  async function handleToggle(reactionId: number) {
-    if (!userId) return;
-    const wasSelected = selectedIds.includes(reactionId);
-    setSelectedIds((current) => (wasSelected ? current.filter((id) => id !== reactionId) : [...current, reactionId]));
-
-    try {
-      await writes.track(async () => {
-        const resolvedMovieId = movieId ?? (await ensureMovieId());
-        // Sin red queda pendiente en el teléfono; solo un rechazo del servidor lanza.
-        await saveMovieReaction(userId, resolvedMovieId, reactionId, !wasSelected);
-      });
-    } catch (err) {
-      setSelectedIds((current) => (wasSelected ? [...current, reactionId] : current.filter((id) => id !== reactionId)));
-      showAlert(
-        wasSelected ? 'No se pudo quitar el calificador' : 'No se pudo marcar el calificador',
-        errorMessage(err)
-      );
-    }
-  }
+  }, [userId]);
 
   function openCreate() {
     setDraftEmoji('');
@@ -123,7 +69,7 @@ export function ReactionPicker({
     setReactions((current) => [...current, data]);
     setDialog('pick');
     // Lo normal al crear uno es querer usarlo en esta película.
-    handleToggle(data.id);
+    onToggle(data.id);
   }
 
   const selectedReactions = reactions.filter((reaction) => selectedIds.includes(reaction.id));
@@ -174,7 +120,7 @@ export function ReactionPicker({
         {dialog === 'pick' && (
           <View style={[styles.dialog, { top: insets.top + 110 }]}>
             <Text style={styles.dialogTitle}>Calificadores</Text>
-            <Text style={styles.dialogCopy}>Solo tú ves los calificadores que marcas.</Text>
+            <Text style={styles.dialogCopy}>Solo tú ves los calificadores que marcas. Se guardan al tocar Guardar.</Text>
             <View style={styles.wrap}>
               {reactions.map((reaction) => {
                 const active = selectedIds.includes(reaction.id);
@@ -184,7 +130,7 @@ export function ReactionPicker({
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: active }}
                     accessibilityLabel={reaction.name}
-                    onPress={() => handleToggle(reaction.id)}
+                    onPress={() => onToggle(reaction.id)}
                     style={[styles.chip, active && styles.chipActive]}>
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>
                       {reaction.emoji} {reaction.name}

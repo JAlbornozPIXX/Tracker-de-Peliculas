@@ -1,9 +1,17 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { addView, deleteView, getViews, sortViews, ViewEntry } from '@/modules/movies/api/views';
 import { toLocalDateString } from '@/modules/movies/utils/view-date';
 import { saveAutoView, syncQueue } from '@/modules/sync/queue';
+
+// days: días con vista automática pendiente en el teléfono. uploaded: los que
+// dejaron de estar pendientes y todavía no llegan en una recarga.
+type PendingDays = { days: string[]; uploaded: string[] };
+
+function readPendingDays(movieId: number | null): string[] {
+  return movieId == null ? [] : syncQueue.pendingAutoViewDates(movieId);
+}
 
 /**
  * Vistas del usuario para una película. movieId es el id interno de movies,
@@ -18,19 +26,37 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
   // Una carga que se cruza con una escritura puede llegar sin esa fila, o con
   // ella y la escritura la agregaría otra vez: se descarta.
   const writes = useWriteTracker();
-  // Días con vista automática pendiente, como texto para que
-  // useSyncExternalStore compare por valor.
-  const getPendingDays = () => (movieId == null ? '' : syncQueue.pendingAutoViewDates(movieId).join(','));
-  const pendingDays = useSyncExternalStore(syncQueue.subscribe, getPendingDays, getPendingDays);
+  const [pending, setPending] = useState<PendingDays>(() => ({ days: readPendingDays(movieId), uploaded: [] }));
 
-  // pendingDays: cuando una vista pendiente se sube, se vuelve a leer para
-  // mostrarla con su id real. Si se cruza con una escritura, se repite al
-  // terminar. Sin vistas cargadas la ficha sigue siendo usable; la próxima
-  // escritura mostrará el error si el problema persiste.
+  // Un día que se sube sale de la cola antes de que la recarga traiga su fila:
+  // se sigue mostrando hasta entonces, para que la lista no parpadee y la
+  // ficha no salte. Días y subidos cambian en la misma actualización.
+  useEffect(() => {
+    return syncQueue.subscribe(() => {
+      const days = readPendingDays(movieId);
+      setPending((current) => {
+        if (days.join(',') === current.days.join(',')) return current;
+        const gone = current.days.filter((day) => !days.includes(day) && !current.uploaded.includes(day));
+        return { days, uploaded: [...current.uploaded, ...gone] };
+      });
+    });
+  }, [movieId]);
+
+  // Cuando una vista pendiente se sube, se vuelve a leer para mostrarla con
+  // su id real. Si se cruza con una escritura, se repite al terminar. Sin
+  // vistas cargadas la ficha sigue siendo usable; la próxima escritura
+  // mostrará el error si el problema persiste.
+  const pendingKey = pending.days.join(',');
   useEffect(() => {
     if (!userId || movieId == null) return;
-    return writes.loadWhenIdle(() => getViews(userId, movieId), setViews);
-  }, [userId, movieId, pendingDays, reloadKey, writes]);
+    return writes.loadWhenIdle(
+      () => getViews(userId, movieId),
+      (rows) => {
+        setViews(rows);
+        setPending((current) => (current.uploaded.length === 0 ? current : { ...current, uploaded: [] }));
+      }
+    );
+  }, [userId, movieId, pendingKey, reloadKey, writes]);
 
   async function registerView(resolvedMovieId: number, viewedOn: string) {
     if (!userId) return;
@@ -55,7 +81,7 @@ export function useMovieViews(userId: string | undefined, movieId: number | null
 
   // Una pendiente no se muestra si ese día ya hay una vista: al subirla, el
   // servidor tampoco la agregará.
-  const pendingViews = (pendingDays ? pendingDays.split(',') : [])
+  const pendingViews = [...pending.days, ...pending.uploaded.filter((day) => !pending.days.includes(day))]
     .filter((day) => !views.some((view) => view.viewedOn === day))
     .map((day, index): ViewEntry => ({ id: -(index + 1), viewedOn: day, source: 'auto', pending: true }));
   const shownViews = pendingViews.length === 0 ? views : sortViews([...views, ...pendingViews]);

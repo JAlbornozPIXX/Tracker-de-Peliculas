@@ -1,4 +1,10 @@
-import type { RouletteFilters } from '@/modules/movies/api/movies';
+import type { DiscoverFilters, Genre } from '@/modules/movies/api/tmdb';
+import { TMDB_MAX_RESULTS } from '@/modules/random/utils/random-pages';
+
+export type RouletteFilters = {
+  genre: Genre | null;
+  maxDurationMinutes: number | null;
+};
 
 export const EMPTY_ROULETTE_FILTERS: RouletteFilters = { genre: null, maxDurationMinutes: null };
 
@@ -6,12 +12,12 @@ export const EMPTY_ROULETTE_FILTERS: RouletteFilters = { genre: null, maxDuratio
  * Sortea una candidata que todavía no salió en la sesión. Devuelve null si
  * ya salieron todas. random se inyecta para poder probarla.
  */
-export function pickRandom<T extends { id: number }>(
+export function pickRandom<T>(
   candidates: readonly T[],
-  seenIds: ReadonlySet<number>,
+  isSeen: (candidate: T) => boolean,
   random: () => number = Math.random
 ): T | null {
-  const pending = candidates.filter((candidate) => !seenIds.has(candidate.id));
+  const pending = candidates.filter((candidate) => !isSeen(candidate));
   if (pending.length === 0) return null;
   return pending[Math.min(Math.floor(random() * pending.length), pending.length - 1)];
 }
@@ -26,18 +32,19 @@ export function loosenFilters(filters: RouletteFilters): RouletteFilters | null 
   return null;
 }
 
-// Sorteo simple: "Comedia + Romance" exige los dos géneros a la vez.
-export function filterByGenres<T extends { genre: string[] }>(movies: readonly T[], genres: readonly string[]): T[] {
-  return movies.filter((movie) => genres.every((genre) => movie.genre.includes(genre)));
-}
-
-// Géneros presentes en las películas, ordenados, para los chips del sorteo.
-export function genresOf(movies: readonly { genre: string[] }[]): string[] {
-  return Array.from(new Set(movies.flatMap((movie) => movie.genre))).sort((a, b) => a.localeCompare(b));
+export function toDiscoverFilters(filters: RouletteFilters): DiscoverFilters {
+  return { genreIds: filters.genre ? [filters.genre.id] : [], maxDurationMinutes: filters.maxDurationMinutes };
 }
 
 export function describeFilters(filters: RouletteFilters): string {
   const duration =
     filters.maxDurationMinutes != null ? `hasta ${filters.maxDurationMinutes} min` : 'sin límite de duración';
-  return `${filters.genre ?? 'Cualquier género'} · ${duration}`;
+  return `${filters.genre?.name ?? 'Cualquier género'} · ${duration}`;
+}
+
+// Cuántas películas entran en el sorteo: TheMovieDB entrega como máximo las
+// primeras 10.000 de cada consulta.
+export function poolSizeLabel(total: number): string {
+  if (total > TMDB_MAX_RESULTS) return `Más de ${TMDB_MAX_RESULTS.toLocaleString('es-CL')} películas`;
+  return total === 1 ? '1 película' : `${total.toLocaleString('es-CL')} películas`;
 }

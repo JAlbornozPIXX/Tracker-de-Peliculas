@@ -10,6 +10,10 @@ const TMDB_POSTER_LARGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 // el error con «Reintentar» en vez de quedar cargando (AC-10).
 export const TMDB_TIMEOUT_MS = 10_000;
 
+// La ruleta y el sorteo solo sugieren películas con al menos estos votos: con
+// menos suelen ser fichas incompletas (sin sinopsis, sin póster).
+const DISCOVER_MIN_VOTES = 50;
+
 export type MovieResultType = 'movie' | 'tv';
 
 export type MovieResult = {
@@ -70,6 +74,27 @@ type TmdbMultiSearchResponse = {
 export type MoviePage = {
   results: MovieResult[];
   totalPages: number;
+};
+
+export type DiscoverFilters = {
+  genreIds: number[];
+  maxDurationMinutes: number | null;
+};
+
+export type DiscoverMovie = {
+  id: number;
+  title: string;
+  posterUrl: string | null;
+};
+
+export type DiscoverPage = {
+  results: DiscoverMovie[];
+  totalResults: number;
+};
+
+type TmdbDiscoverResponse = {
+  results: { id: number; title?: string; poster_path: string | null }[];
+  total_results: number;
 };
 
 /**
@@ -208,6 +233,52 @@ export async function discoverMoviesByGenres(
   }));
 
   return { results, totalPages: data.total_pages };
+}
+
+/**
+ * Una página de las películas de TheMovieDB que cumplen los filtros, de la
+ * más popular a la menos. Con varios géneros exige todos a la vez.
+ */
+export async function discoverMovies(
+  filters: DiscoverFilters,
+  page: number,
+  signal?: AbortSignal
+): Promise<DiscoverPage> {
+  if (!TMDB_API_KEY) {
+    throw new TmdbConfigError(
+      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder consultar TheMovieDB.'
+    );
+  }
+
+  const params = new URLSearchParams({
+    api_key: TMDB_API_KEY,
+    sort_by: 'popularity.desc',
+    'vote_count.gte': String(DISCOVER_MIN_VOTES),
+    include_adult: 'false',
+    include_video: 'false',
+    language: TMDB_LANGUAGE,
+    page: String(page),
+  });
+  if (filters.genreIds.length > 0) {
+    // Separadas por coma, TheMovieDB exige todas las categorías a la vez.
+    params.set('with_genres', filters.genreIds.join(','));
+  }
+  if (filters.maxDurationMinutes != null) {
+    // Sin duración cargada TheMovieDB guarda 0: no cumple un tope de minutos.
+    params.set('with_runtime.gte', '1');
+    params.set('with_runtime.lte', String(filters.maxDurationMinutes));
+  }
+
+  const data = await tmdbGet<TmdbDiscoverResponse>('/discover/movie', params, signal);
+
+  return {
+    results: data.results.map((item) => ({
+      id: item.id,
+      title: item.title ?? 'Sin título',
+      posterUrl: getPosterUrl(item.poster_path),
+    })),
+    totalResults: data.total_results,
+  };
 }
 
 /**

@@ -1,6 +1,15 @@
-import { EMPTY_ROULETTE_FILTERS, filterByGenres, genresOf, loosenFilters, pickRandom } from '../roulette';
+import { TMDB_MAX_RESULTS } from '../random-pages';
+import {
+  describeFilters,
+  EMPTY_ROULETTE_FILTERS,
+  loosenFilters,
+  pickRandom,
+  poolSizeLabel,
+  toDiscoverFilters,
+} from '../roulette';
 
 const candidates = Array.from({ length: 12 }, (_, index) => ({ id: index + 1 }));
+const COMEDY = { id: 35, name: 'Comedia' };
 
 // Generador determinista para que la prueba no dependa de Math.random.
 function seededRandom(seed: number) {
@@ -11,13 +20,15 @@ function seededRandom(seed: number) {
   };
 }
 
+const seenIn = (seen: Set<number>) => (candidate: { id: number }) => seen.has(candidate.id);
+
 describe('pickRandom', () => {
   it('10 giros seguidos no repiten mientras queden candidatas', () => {
     for (const seed of [1, 7, 42, 2026]) {
       const random = seededRandom(seed);
       const seen = new Set<number>();
       for (let spin = 0; spin < 10; spin++) {
-        const picked = pickRandom(candidates, seen, random);
+        const picked = pickRandom(candidates, seenIn(seen), random);
         expect(picked).not.toBeNull();
         expect(seen.has(picked!.id)).toBe(false);
         seen.add(picked!.id);
@@ -29,7 +40,7 @@ describe('pickRandom', () => {
   it('con un random que siempre da lo mismo tampoco repite', () => {
     const seen = new Set<number>();
     for (let spin = 0; spin < 10; spin++) {
-      const picked = pickRandom(candidates, seen, () => 0);
+      const picked = pickRandom(candidates, seenIn(seen), () => 0);
       expect(seen.has(picked!.id)).toBe(false);
       seen.add(picked!.id);
     }
@@ -37,29 +48,44 @@ describe('pickRandom', () => {
 
   it('devuelve la última candidata pendiente y después null', () => {
     const seen = new Set(candidates.slice(1).map((c) => c.id));
-    expect(pickRandom(candidates, seen, () => 0.99)).toEqual({ id: 1 });
+    expect(pickRandom(candidates, seenIn(seen), () => 0.99)).toEqual({ id: 1 });
     seen.add(1);
-    expect(pickRandom(candidates, seen)).toBeNull();
+    expect(pickRandom(candidates, seenIn(seen))).toBeNull();
   });
 
   it('sin candidatas devuelve null', () => {
-    expect(pickRandom([], new Set())).toBeNull();
+    expect(pickRandom([], () => false)).toBeNull();
   });
 
   it('no se sale del arreglo si random devuelve 1', () => {
-    expect(pickRandom(candidates, new Set(), () => 1)).toEqual({ id: 12 });
+    expect(pickRandom(candidates, () => false, () => 1)).toEqual({ id: 12 });
   });
 });
 
 describe('loosenFilters', () => {
   it('quita primero la duración y después el género', () => {
-    const first = loosenFilters({ genre: 'Comedia', maxDurationMinutes: 100 });
-    expect(first).toEqual({ genre: 'Comedia', maxDurationMinutes: null });
+    const first = loosenFilters({ genre: COMEDY, maxDurationMinutes: 100 });
+    expect(first).toEqual({ genre: COMEDY, maxDurationMinutes: null });
     expect(loosenFilters(first!)).toEqual(EMPTY_ROULETTE_FILTERS);
   });
 
   it('sin restricciones devuelve null', () => {
     expect(loosenFilters(EMPTY_ROULETTE_FILTERS)).toBeNull();
+  });
+});
+
+describe('filtros de la ruleta', () => {
+  it('se traducen a la consulta de TheMovieDB', () => {
+    expect(toDiscoverFilters({ genre: COMEDY, maxDurationMinutes: 90 })).toEqual({
+      genreIds: [35],
+      maxDurationMinutes: 90,
+    });
+    expect(toDiscoverFilters(EMPTY_ROULETTE_FILTERS)).toEqual({ genreIds: [], maxDurationMinutes: null });
+  });
+
+  it('se describen para los avisos', () => {
+    expect(describeFilters({ genre: COMEDY, maxDurationMinutes: 90 })).toBe('Comedia · hasta 90 min');
+    expect(describeFilters(EMPTY_ROULETTE_FILTERS)).toBe('Cualquier género · sin límite de duración');
   });
 });
 
@@ -70,33 +96,17 @@ describe('sorteo simple', () => {
       const random = seededRandom(seed);
       const seen = new Set<number>();
       for (let draw = 0; draw < 3; draw++) {
-        const picked = pickRandom(playlist, seen, random);
+        const picked = pickRandom(playlist, seenIn(seen), random);
         expect([21, 22, 23]).toContain(picked!.id);
         seen.add(picked!.id);
       }
-      expect(pickRandom(playlist, seen, random)).toBeNull();
+      expect(pickRandom(playlist, seenIn(seen), random)).toBeNull();
     }
   });
 
-  it('comedia + romance devuelve solo películas con ambos géneros', () => {
-    const movies = [
-      { id: 1, genre: ['Comedia'] },
-      { id: 2, genre: ['Romance'] },
-      { id: 3, genre: ['Comedia', 'Romance'] },
-      { id: 4, genre: ['Drama', 'Romance', 'Comedia'] },
-      { id: 5, genre: [] },
-    ];
-    expect(filterByGenres(movies, ['Comedia', 'Romance']).map((m) => m.id)).toEqual([3, 4]);
-    expect(filterByGenres(movies, ['Comedia']).map((m) => m.id)).toEqual([1, 3, 4]);
-    // El orden en que se eligen los géneros no cambia el resultado.
-    expect(filterByGenres(movies, ['Romance', 'Comedia']).map((m) => m.id)).toEqual([3, 4]);
-  });
-
-  it('los chips de género salen solo del catálogo, sin repetir y ordenados', () => {
-    expect(genresOf([{ genre: ['Romance', 'Comedia'] }, { genre: ['Comedia', 'Animación'] }, { genre: [] }])).toEqual([
-      'Animación',
-      'Comedia',
-      'Romance',
-    ]);
+  it('cuenta cuántas películas de TheMovieDB entran en el sorteo', () => {
+    expect(poolSizeLabel(1)).toBe('1 película');
+    expect(poolSizeLabel(1234)).toBe('1.234 películas');
+    expect(poolSizeLabel(TMDB_MAX_RESULTS + 1)).toBe('Más de 10.000 películas');
   });
 });

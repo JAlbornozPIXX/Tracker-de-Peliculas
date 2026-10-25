@@ -4,8 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { EmptyNotice } from '@/components/empty-notice';
 import { GoldenPoster } from '@/components/golden-poster';
-import type { MovieRow } from '@/modules/movies/api/movies';
-import type { useDraw } from '@/modules/random/hooks/use-draw';
+import type { DrawSuggestion, useDraw } from '@/modules/random/hooks/use-draw';
 
 const POSTER_SIZE = 180;
 
@@ -37,7 +36,7 @@ function Suggestion({
   onAgain,
   onChange,
 }: {
-  movie: MovieRow;
+  movie: DrawSuggestion;
   againLabel: string;
   changeLabel: string;
   onAgain: () => void;
@@ -45,15 +44,15 @@ function Suggestion({
 }) {
   const router = useRouter();
   const meta = [
-    movie.release_date?.slice(0, 4),
-    movie.duration_minutes != null && `${movie.duration_minutes} min`,
-    ...movie.genre.slice(0, 2),
+    movie.year,
+    movie.durationMinutes != null && `${movie.durationMinutes} min`,
+    ...movie.genres.slice(0, 2),
   ].filter(Boolean);
 
   return (
     <View accessibilityLiveRegion="polite" style={styles.suggestion}>
       <Text style={styles.kicker}>TU PELÍCULA DE HOY</Text>
-      <GoldenPoster posterUrl={movie.poster_url} title={movie.title} rating={null} size={POSTER_SIZE} />
+      <GoldenPoster posterUrl={movie.posterUrl} title={movie.title} rating={null} size={POSTER_SIZE} />
       <Text style={styles.movieTitle}>{movie.title}</Text>
       {meta.length > 0 && <Text style={styles.movieMeta}>{meta.join(' · ')}</Text>}
       {movie.overview && (
@@ -61,10 +60,7 @@ function Suggestion({
           {movie.overview}
         </Text>
       )}
-      <PrimaryButton
-        label="Ver ficha"
-        onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
-      />
+      <PrimaryButton label="Ver ficha" onPress={() => router.push({ pathname: '/movie/[id]', params: movie.detail })} />
       <View style={styles.actionsRow}>
         <SecondaryButton label={againLabel} onPress={onAgain} grow />
         <SecondaryButton label={changeLabel} onPress={onChange} grow />

@@ -1,75 +1,40 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useWriteTracker } from '@/hooks/use-write-tracker';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import {
-  addMovieToList,
-  getListIdsForMovie,
-  getLists,
-  ListSummary,
-  removeMovieFromList,
-} from '@/modules/lists/api/lists';
+import { getLists, ListSummary } from '@/modules/lists/api/lists';
 import { errorMessage, showAlert } from '@/utils/alert';
 
 /**
- * Chips para agregar o quitar un título de las listas del usuario.
- * movieId es el id interno de movies, o null si el título todavía no existe
- * ahí; en ese caso ensureMovieId lo crea al agregarlo a la primera lista.
+ * Chips para elegir en qué listas del usuario va el título. Solo marca la
+ * selección: la ficha la guarda al tocar Guardar.
  */
 export function MovieListsPicker({
-  movieId,
-  ensureMovieId,
+  selectedIds,
+  onToggle,
 }: {
-  movieId: number | null;
-  ensureMovieId: () => Promise<number>;
+  selectedIds: number[];
+  onToggle: (listId: number) => void;
 }) {
   const { session } = useAuth();
   const userId = session?.user.id;
 
-  const [lists, setLists] = useState<ListSummary[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const writes = useWriteTracker();
+  const [lists, setLists] = useState<ListSummary[] | null>(null);
 
-  // movieId cambia de null al id nuevo durante el primer cambio de un título
-  // de TheMovieDB: esa carga no debe pisar el cambio en curso, así que espera
-  // a que termine (y se repite si se cruza con otro).
   useEffect(() => {
     if (!userId) return;
-    return writes.loadWhenIdle(
-      () => Promise.all([getLists(userId), movieId != null ? getListIdsForMovie(movieId) : []]),
-      ([userLists, listIds]) => {
-        setLists(userLists);
-        setSelectedIds(listIds);
-        setLoaded(true);
-      },
-      (err) => showAlert('No se pudieron cargar tus listas', errorMessage(err))
-    );
-  }, [userId, movieId, writes]);
+    let active = true;
+    getLists(userId)
+      .then((userLists) => {
+        if (active) setLists(userLists);
+      })
+      .catch((err) => showAlert('No se pudieron cargar tus listas', errorMessage(err)));
+    return () => {
+      active = false;
+    };
+  }, [userId]);
 
-  async function handleToggle(listId: number) {
-    const wasSelected = selectedIds.includes(listId);
-    setSelectedIds((current) => (wasSelected ? current.filter((id) => id !== listId) : [...current, listId]));
-
-    try {
-      await writes.track(async () => {
-        const resolvedMovieId = movieId ?? (await ensureMovieId());
-        const { error } = wasSelected
-          ? await removeMovieFromList(listId, resolvedMovieId)
-          : await addMovieToList(listId, resolvedMovieId);
-        if (error) throw error;
-      });
-    } catch (err) {
-      setSelectedIds((current) => (wasSelected ? [...current, listId] : current.filter((id) => id !== listId)));
-      showAlert(
-        wasSelected ? 'No se pudo quitar de la lista' : 'No se pudo agregar a la lista',
-        errorMessage(err)
-      );
-    }
-  }
-
-  if (!loaded) return null;
+  if (!lists) return null;
 
   if (lists.length === 0) {
     return (
@@ -89,7 +54,7 @@ export function MovieListsPicker({
             accessibilityRole="checkbox"
             accessibilityState={{ checked: active }}
             accessibilityLabel={list.name}
-            onPress={() => handleToggle(list.id)}
+            onPress={() => onToggle(list.id)}
             style={[styles.chip, active && styles.chipActive]}>
             <Text style={[styles.chipText, active && styles.chipTextActive]}>
               {active ? '✓ ' : '+ '}

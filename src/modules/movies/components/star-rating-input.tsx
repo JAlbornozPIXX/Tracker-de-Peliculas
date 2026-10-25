@@ -57,7 +57,8 @@ export function StarRatingInput({ value, onChange }: { value: number | null; onC
 
 const styles = StyleSheet.create({
   frame: { borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#27222D', backgroundColor: '#15131A' },
-  goldFrame: { borderColor: GOLD, borderWidth: 2, backgroundColor: 'rgba(255,215,0,0.08)' },
+  // El borde más grueso se descuenta del padding: llegar a 5 estrellas no cambia el tamaño.
+  goldFrame: { borderColor: GOLD, borderWidth: 2, padding: 11, backgroundColor: 'rgba(255,215,0,0.08)' },
   row: { flexDirection: 'row', gap: 6 },
   starSlot: { width: STAR_SIZE, height: STAR_SIZE },
   starGlyph: { fontSize: STAR_SIZE - 4, lineHeight: STAR_SIZE, position: 'absolute', left: 0, top: 0 },

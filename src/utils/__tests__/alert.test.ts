@@ -1,6 +1,6 @@
-import { Alert, Platform } from 'react-native';
+import { Alert, AlertButton, Platform } from 'react-native';
 
-import { errorMessage, showAlert } from '../alert';
+import { confirmUnsavedChanges, errorMessage, showAlert } from '../alert';
 
 describe('showAlert', () => {
   const originalOS = Platform.OS;
@@ -25,6 +25,41 @@ describe('showAlert', () => {
     showAlert('Listo');
     expect(alert).toHaveBeenNthCalledWith(1, 'No se pudo guardar\n\nSin red');
     expect(alert).toHaveBeenNthCalledWith(2, 'Listo');
+  });
+});
+
+describe('confirmUnsavedChanges', () => {
+  const originalOS = Platform.OS;
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+    jest.restoreAllMocks();
+  });
+
+  it('en el teléfono ofrece seguir editando, descartar o guardar', () => {
+    Platform.OS = 'android';
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const onSave = jest.fn();
+    const onDiscard = jest.fn();
+    confirmUnsavedChanges({ onSave, onDiscard });
+
+    const buttons = alert.mock.calls[0][2] as AlertButton[];
+    expect(buttons.map((button) => button.text)).toEqual(['Seguir editando', 'Descartar', 'Guardar']);
+    buttons[1].onPress!();
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    buttons[2].onPress!();
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('en web aceptar sale sin guardar y cancelar se queda', () => {
+    Platform.OS = 'web';
+    const confirm = jest.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
+    Object.defineProperty(globalThis, 'window', { value: { confirm }, configurable: true });
+    const onDiscard = jest.fn();
+    confirmUnsavedChanges({ onSave: jest.fn(), onDiscard });
+    confirmUnsavedChanges({ onSave: jest.fn(), onDiscard });
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
   });
 });
 
