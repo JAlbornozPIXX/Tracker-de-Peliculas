@@ -85,6 +85,8 @@ npx expo prebuild --clean --platform android
 cd android && ./gradlew assembleRelease
 ```
 
+En Windows esa compilacion choca con el limite de 260 caracteres en las rutas (el codigo C++ generado de `react-native-gesture-handler` y `react-native-worklets` pasa los 300), aunque el proyecto este en una carpeta corta: hay que activar `LongPathsEnabled` en el registro (como administrador) e instalar una CMake 3.31 o mas nueva desde el SDK Manager. Si no, usa EAS Build.
+
 El APK queda en `android/app/build/outputs/apk/release/app-release.apk` y toma las variables de `.env`. Esa compilacion local se firma con la clave de depuracion: sirve para instalar y probar, no para publicar en Play Store.
 
 Antes de repartir un APK: `schema.sql` al dia en Supabase y `tmdb-proxy` desplegada con `TMDB_KEY`.
