@@ -112,6 +112,7 @@ describe('Inicio (L1)', () => {
     expect(all).toContain('Busca tu primera película');
     expect(all).not.toContain('Continuar viendo');
     expect(all).not.toContain('Catálogo');
+    expect(all).not.toContain('¿No sabes qué ver?');
 
     const button = home.root.find(
       (node) => node.props.accessibilityRole === 'button' && textsIn(node).includes('Buscar películas')
@@ -120,12 +121,36 @@ describe('Inicio (L1)', () => {
     expect(mockPush).toHaveBeenCalledWith('/search');
   });
 
-  it('los accesos a Ruleta, Pila y Wrapped siguen en Inicio (DEF-03)', async () => {
+  it('los accesos a Ruleta, vergüenza y Wrapped siguen en Inicio (DEF-03), entre la búsqueda y las secciones', async () => {
     jest.mocked(getTrackedMovies).mockResolvedValue([tracked(1, 'watching')]);
     jest.mocked(getCatalogMovies).mockResolvedValue([]);
 
     const all = texts(await renderHome());
 
-    expect(all).toEqual(expect.arrayContaining(['Azar', 'Pila', 'Wrapped']));
+    expect(all).toEqual(expect.arrayContaining(['Ruleta', 'Vergüenza', 'Wrapped']));
+    expect(all.indexOf('Buscar películas y series')).toBeLessThan(all.indexOf('Ruleta'));
+    expect(all.indexOf('Wrapped')).toBeLessThan(all.indexOf('Continuar viendo'));
+  });
+
+  it('con títulos para ver ofrece la Ruleta después de «Para ver»', async () => {
+    jest.mocked(getTrackedMovies).mockResolvedValue([tracked(1, 'watchlist'), tracked(2, 'watchlist')]);
+    jest.mocked(getCatalogMovies).mockResolvedValue([]);
+
+    const home = await renderHome();
+    const all = texts(home);
+
+    expect(all.indexOf('Para ver')).toBeLessThan(all.indexOf('¿No sabes qué ver?'));
+    expect(all.join(' ')).toContain('Tienes 2 títulos para ver');
+
+    const card = home.root.find((node) => node.props.accessibilityLabel === 'Abrir la Ruleta para elegir qué ver' && node.props.onPress);
+    act(() => card.props.onPress());
+    expect(mockPush).toHaveBeenCalledWith('/random');
+  });
+
+  it('saluda con el nombre sacado del correo cuando no hay perfil', async () => {
+    jest.mocked(getTrackedMovies).mockResolvedValue([tracked(1, 'watching')]);
+    jest.mocked(getCatalogMovies).mockResolvedValue([]);
+
+    expect(texts(await renderHome())).toContain('Hola, Ana');
   });
 });

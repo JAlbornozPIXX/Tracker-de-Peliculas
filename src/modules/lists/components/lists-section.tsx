@@ -1,22 +1,22 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Chips } from '@/components/chips';
 import { useAuth } from '@/modules/auth/context/AuthContext';
-import { createList, getLists, LIST_NAME_MAX, ListSummary } from '@/modules/lists/api/lists';
-import { DEFAULT_LIST_KIND, LIST_KINDS, ListKind, listKindLabel } from '@/modules/lists/constants/kinds';
+import { getLists, ListSummary } from '@/modules/lists/api/lists';
+import { listKindLabel } from '@/modules/lists/constants/kinds';
 import { errorMessage, showAlert } from '@/utils/alert';
 
+/**
+ * Vista previa de las listas en Inicio. Crear, renombrar y ordenar se hace en
+ * Mis listas: así Inicio no tiene formularios y queda solo para encontrar.
+ */
 export function ListsSection() {
   const router = useRouter();
   const { session } = useAuth();
   const userId = session?.user.id;
 
   const [lists, setLists] = useState<ListSummary[]>([]);
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<ListKind>(DEFAULT_LIST_KIND);
-  const [creating, setCreating] = useState(false);
 
   // Se recarga al volver a la pantalla para reflejar títulos agregados o
   // listas eliminadas desde otras pantallas.
@@ -33,54 +33,18 @@ export function ListsSection() {
     }, [userId])
   );
 
-  const trimmedName = name.trim();
-  const canCreate = trimmedName.length > 0 && !creating;
-
-  async function handleCreate() {
-    if (!userId || !canCreate) return;
-    setCreating(true);
-    const { data, error } = await createList(userId, trimmedName, kind);
-    setCreating(false);
-
-    if (error) {
-      showAlert('No se pudo crear la lista', error.message);
-      return;
-    }
-    setLists((current) => [...current, { id: data.id, name: data.name, kind: data.kind, movieCount: 0 }]);
-    setName('');
-  }
+  const openAll = () => router.push('/lists');
+  const createNew = () => router.push({ pathname: '/lists', params: { nueva: '1' } });
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} accessibilityLabel={`Mis listas, ${lists.length === 1 ? '1 lista' : `${lists.length} listas`}`}>
       <View style={styles.titleRow}>
         <Text style={styles.title}>Mis listas</Text>
-        <Text style={styles.count}>{lists.length === 1 ? '1 lista' : `${lists.length} listas`}</Text>
-      </View>
-
-      <View style={styles.createRow}>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          maxLength={LIST_NAME_MAX}
-          placeholder="Nombre de la nueva lista"
-          placeholderTextColor="#7D7382"
-          returnKeyType="done"
-          onSubmitEditing={handleCreate}
-          accessibilityLabel="Nombre de la nueva lista"
-          style={styles.input}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Crear lista"
-          accessibilityState={{ disabled: !canCreate }}
-          disabled={!canCreate}
-          onPress={handleCreate}
-          style={[styles.createButton, !canCreate && styles.createButtonDisabled]}>
-          <Text style={styles.createButtonText}>Crear</Text>
-        </Pressable>
-      </View>
-      <View style={styles.kindRow}>
-        <Chips options={LIST_KINDS} value={kind} onChange={setKind} scroll />
+        {lists.length > 0 && (
+          <Pressable accessibilityRole="button" accessibilityLabel="Ver todas las listas" onPress={openAll} hitSlop={10}>
+            <Text style={styles.link}>Ver todas ›</Text>
+          </Pressable>
+        )}
       </View>
 
       {lists.length > 0 ? (
@@ -90,7 +54,7 @@ export function ListsSection() {
               key={list.id}
               accessibilityRole="button"
               onPress={() => router.push({ pathname: '/list/[id]', params: { id: String(list.id) } })}
-              style={styles.card}>
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
               <Text numberOfLines={2} style={styles.cardName}>
                 {list.name}
               </Text>
@@ -99,11 +63,22 @@ export function ListsSection() {
               </Text>
             </Pressable>
           ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Crear lista"
+            onPress={createNew}
+            style={({ pressed }) => [styles.newCard, pressed && styles.cardPressed]}>
+            <Text style={styles.newIcon}>+</Text>
+            <Text style={styles.newText}>Nueva lista</Text>
+          </Pressable>
         </ScrollView>
       ) : (
         <View style={styles.emptyPanel}>
           <Text style={styles.emptyTitle}>Todavía no tienes listas</Text>
-          <Text style={styles.emptyCopy}>Crea una y agrega títulos desde el detalle de cada película.</Text>
+          <Text style={styles.emptyCopy}>Agrupa tus películas por tema, saga o lo que quieras.</Text>
+          <Pressable accessibilityRole="button" onPress={createNew} style={styles.emptyButton}>
+            <Text style={styles.emptyButtonText}>Crear lista</Text>
+          </Pressable>
         </View>
       )}
     </View>
@@ -114,18 +89,18 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   titleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 },
   title: { color: '#F4F4F5', fontSize: 21, fontWeight: '800' },
-  count: { color: '#7D7382', fontSize: 12 },
-  createRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  kindRow: { marginBottom: 14 },
-  input: { flex: 1, height: 46, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431', color: '#F4F4F5', fontSize: 14 },
-  createButton: { height: 46, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#A83BDD', alignItems: 'center', justifyContent: 'center' },
-  createButtonDisabled: { opacity: 0.45 },
-  createButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  link: { color: '#D78CFF', fontSize: 13, fontWeight: '700' },
   row: { gap: 12 },
   card: { width: 150, minHeight: 92, padding: 14, borderRadius: 15, backgroundColor: '#21172A', borderWidth: 1, borderColor: '#432653', justifyContent: 'space-between' },
+  cardPressed: { opacity: 0.8 },
   cardName: { color: '#F4F4F5', fontSize: 15, lineHeight: 19, fontWeight: '700' },
   cardCount: { color: '#D78CFF', fontSize: 12, fontWeight: '600', marginTop: 10 },
+  newCard: { width: 110, minHeight: 92, padding: 14, borderRadius: 15, borderWidth: 1, borderStyle: 'dashed', borderColor: '#4D3A5A', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  newIcon: { color: '#D78CFF', fontSize: 24, lineHeight: 26, fontWeight: '700' },
+  newText: { color: '#D5D0D8', fontSize: 12, fontWeight: '700' },
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 18 },
   emptyTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '700' },
   emptyCopy: { color: '#8F8795', fontSize: 13, lineHeight: 19, marginTop: 6 },
+  emptyButton: { alignSelf: 'flex-start', marginTop: 14, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#A83BDD' },
+  emptyButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });

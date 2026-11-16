@@ -70,10 +70,11 @@ function SearchBar({ onPress }: { onPress: () => void }) {
   );
 }
 
-// Zonas que no están en la barra inferior: se abren desde aquí en un toque.
+// Zonas que no están en la barra inferior: van justo bajo la búsqueda para que
+// se vean al abrir la app, sin tener que bajar.
 const QUICK_ACCESS = [
-  { href: '/random', icon: '◎', label: 'Azar' },
-  { href: '/shame', icon: '⏳', label: 'Pila' },
+  { href: '/random', icon: '◎', label: 'Ruleta' },
+  { href: '/shame', icon: '⏳', label: 'Vergüenza' },
   { href: '/ranking', icon: '★', label: 'Ranking' },
   { href: '/stats', icon: '▤', label: 'Estadísticas' },
   { href: '/challenges', icon: '⚑', label: 'Retos' },
@@ -117,6 +118,37 @@ function ShameBanner({ count, onPress }: { count: number; onPress: () => void })
       <Text style={styles.shameArrow}>›</Text>
     </Pressable>
   );
+}
+
+// Decidir rápido (N-03): con pendientes, la Ruleta se ofrece justo después.
+function RouletteCard({ pending, onPress }: { pending: number; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Abrir la Ruleta para elegir qué ver"
+      onPress={onPress}
+      style={({ pressed }) => [styles.rouletteCard, pressed && styles.rouletteCardPressed]}>
+      <View style={styles.rouletteIconWrap}>
+        <Text style={styles.rouletteIcon}>◎</Text>
+      </View>
+      <View style={styles.rouletteText}>
+        <Text style={styles.rouletteTitle}>¿No sabes qué ver?</Text>
+        <Text style={styles.rouletteCopy}>
+          {pending > 0
+            ? `Tienes ${pending === 1 ? '1 título' : `${pending} títulos`} para ver. Gira la Ruleta y decide en segundos.`
+            : 'Gira la Ruleta y deja que el azar elija por ti.'}
+        </Text>
+      </View>
+      <Text style={styles.rouletteArrow}>›</Text>
+    </Pressable>
+  );
+}
+
+// Primer nombre para el saludo: el nombre del perfil o, si no hay, el correo.
+function firstName(label: string): string {
+  const base = label.includes('@') ? label.split('@')[0] : label;
+  const first = base.trim().split(/[\s._-]+/)[0] ?? '';
+  return first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
 }
 
 // Usuario nuevo, sin títulos: en vez de secciones vacías, un solo llamado a buscar (AC-38).
@@ -247,6 +279,7 @@ export default function ExploreScreen() {
 
   const watching = userMovies.byStatus('watching');
   const toWatch = userMovies.byStatus('watchlist');
+  const name = firstName(avatarLabel);
   const isNewUser = !userMovies.failed && userMovies.tracked.length === 0 && movies.length === 0;
   const openMovie = (movieId: number) =>
     router.push({ pathname: '/movie/[id]', params: { id: String(movieId) } });
@@ -269,7 +302,8 @@ export default function ExploreScreen() {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.eyebrow}>CINE-TECA</Text>
-            <Text style={styles.greeting}>Tu espacio de cine</Text>
+            <Text style={styles.greeting}>{name ? `Hola, ${name}` : 'Tu espacio de cine'}</Text>
+            <Text style={styles.subGreeting}>¿Qué vemos hoy?</Text>
           </View>
           <ProfileAvatar
             avatarUrl={avatarUrl}
@@ -281,6 +315,10 @@ export default function ExploreScreen() {
         </View>
 
         <SearchBar onPress={() => router.push('/search')} />
+
+        <QuickAccess onOpen={(href) => router.push(href)} />
+
+        {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
 
         {isNewUser ? (
           <WelcomePanel onSearch={() => router.push('/search')} />
@@ -302,12 +340,9 @@ export default function ExploreScreen() {
               emptyCopy="Lo que marques como “Ver más tarde” queda aquí."
               onOpen={openMovie}
             />
+            <RouletteCard pending={toWatch.length} onPress={() => router.push('/random')} />
           </>
         )}
-
-        {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
-
-        <QuickAccess onOpen={(href) => router.push(href)} />
 
         <ListsSection />
 
@@ -352,12 +387,13 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
   eyebrow: { color: '#B94DFF', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   greeting: { color: '#F4F4F5', fontSize: 23, fontWeight: '700', marginTop: 4 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 22 },
-  quickTile: { flexBasis: '30%', flexGrow: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 16, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
+  subGreeting: { color: '#8F8795', fontSize: 13, marginTop: 2 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 22 },
+  quickTile: { flexBasis: '30%', flexGrow: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
   quickTilePressed: { backgroundColor: '#211D28' },
-  quickIcon: { color: '#D78CFF', fontSize: 20, lineHeight: 22 },
+  quickIcon: { color: '#D78CFF', fontSize: 18, lineHeight: 20 },
   quickLabel: { color: '#D5D0D8', fontSize: 12, fontWeight: '700' },
-  shameBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#2A2112', borderWidth: 1, borderColor: '#5C4520', marginTop: -8, marginBottom: 22 },
+  shameBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#2A2112', borderWidth: 1, borderColor: '#5C4520', marginBottom: 22 },
   shameIcon: { fontSize: 22 },
   shameText: { flex: 1 },
   shameTitle: { color: '#F4F4F5', fontSize: 14, fontWeight: '800' },
@@ -379,4 +415,12 @@ const styles = StyleSheet.create({
   welcomeTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
   welcomeButton: { alignSelf: 'flex-start', marginTop: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#A83BDD' },
   welcomeButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  rouletteCard: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', marginTop: -6, marginBottom: 26 },
+  rouletteCardPressed: { backgroundColor: '#2D1438' },
+  rouletteIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#A83BDD', alignItems: 'center', justifyContent: 'center' },
+  rouletteIcon: { color: '#FFFFFF', fontSize: 22, lineHeight: 24 },
+  rouletteText: { flex: 1 },
+  rouletteTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  rouletteCopy: { color: '#C9B6D3', fontSize: 12, lineHeight: 17, marginTop: 3 },
+  rouletteArrow: { color: '#D78CFF', fontSize: 26, lineHeight: 26 },
 });
