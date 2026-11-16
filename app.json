@@ -22,7 +22,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -41,7 +44,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil."
+          "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil.",
+          "microphonePermission": false
         }
       ],
       "expo-sharing"
@@ -50,6 +54,12 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "backgroundColor": "#0B0B0F"
+    "backgroundColor": "#0B0B0F",
+    "extra": {
+      "eas": {
+        "projectId": "c7175ca7-22b9-4d02-bd08-edfeed77c821"
+      }
+    },
+    "owner": "jalbornoz.pixx"
   }
 }
