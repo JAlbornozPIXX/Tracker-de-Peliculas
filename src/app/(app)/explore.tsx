@@ -16,26 +16,19 @@ import { GoldenPoster } from '@/components/golden-poster';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { ListsSection } from '@/modules/lists/components/lists-section';
 import { getCatalogMovies } from '@/modules/movies/api/movies';
+import type { TrackedMovie } from '@/modules/movies/api/user-movies';
+import { useUserMovies } from '@/modules/movies/hooks/use-user-movies';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { getShamePile } from '@/modules/watchlist/api/shame';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
 import { errorMessage, showAlert } from '@/utils/alert';
-import { fetchAllRows } from '@/utils/fetch-all';
-import { supabase } from '@/utils/supabase';
 
 type Movie = {
   id: number;
   title: string;
   overview: string | null;
   poster_url: string | null;
-};
-
-type TrackedMovie = {
-  movie_id: number;
-  status: 'watchlist' | 'watching' | 'watched';
-  rating: number | null;
-  movies: Movie | null;
 };
 
 const CARD_WIDTH = 142;
@@ -126,11 +119,68 @@ function ShameBanner({ count, onPress }: { count: number; onPress: () => void })
   );
 }
 
+// Usuario nuevo, sin títulos: en vez de secciones vacías, un solo llamado a buscar (AC-38).
+function WelcomePanel({ onSearch }: { onSearch: () => void }) {
+  return (
+    <View style={styles.welcome}>
+      <Text style={styles.welcomeTitle}>Busca tu primera película</Text>
+      <Text style={styles.emptyCopy}>
+        Encuéntrala en TheMovieDB, márcala como Viendo o Ver más tarde y aparecerá aquí.
+      </Text>
+      <Pressable accessibilityRole="button" onPress={onSearch} style={styles.welcomeButton}>
+        <Text style={styles.welcomeButtonText}>Buscar películas</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function SectionTitle({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionTitleRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {count !== undefined && <Text style={styles.sectionCount}>{count} títulos</Text>}
+    </View>
+  );
+}
+
+function TrackedSection({
+  title,
+  items,
+  ratings,
+  emptyTitle,
+  emptyCopy,
+  onOpen,
+}: {
+  title: string;
+  items: TrackedMovie[];
+  ratings: Record<number, number | null>;
+  emptyTitle: string;
+  emptyCopy: string;
+  onOpen: (movieId: number) => void;
+}) {
+  return (
+    <View accessibilityLabel={`${title}, ${items.length === 1 ? '1 título' : `${items.length} títulos`}`}>
+      <SectionTitle title={title} count={items.length} />
+      {items.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {items.map(
+            (item) =>
+              item.movie && (
+                <MovieCard
+                  key={item.movieId}
+                  movie={item.movie}
+                  rating={ratings[item.movieId] ?? null}
+                  onPress={() => onOpen(item.movieId)}
+                />
+              )
+          )}
+        </ScrollView>
+      ) : (
+        <View style={styles.emptyPanel}>
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.emptyCopy}>{emptyCopy}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -143,9 +193,8 @@ export default function ExploreScreen() {
   const userId = session?.user.id;
   const email = session?.user.email;
   const [movies, setMovies] = useState<Movie[]>([]);
-  const [watching, setWatching] = useState<TrackedMovie[]>([]);
-  // Nota del usuario por movie_id, para el marco dorado del catálogo.
-  const [ratings, setRatings] = useState<Record<number, number | null>>({});
+  // Las secciones por estado salen del mismo seguimiento, con RLS (L1).
+  const userMovies = useUserMovies(userId);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLabel, setAvatarLabel] = useState('');
   const [shameCount, setShameCount] = useState(0);
@@ -160,21 +209,13 @@ export default function ExploreScreen() {
       async function loadHome() {
         if (userId) {
           let catalogError: unknown = null;
-          const [catalog, tracked, profile, shame] = await Promise.all([
+          const [catalog, profile, shame] = await Promise.all([
             // El catálogo propio (RN-03): la tabla movies tiene también las
             // películas de otros usuarios.
             getCatalogMovies(userId).catch((err: unknown) => {
               catalogError = err;
               return null;
             }),
-            fetchAllRows<TrackedMovie>((from, to) =>
-              supabase
-                .from('user_movies')
-                .select('movie_id, status, rating, movies(id, title, overview, poster_url)', { count: 'exact' })
-                .eq('user_id', userId)
-                .order('movie_id')
-                .range(from, to)
-            ).catch(() => null),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
             // El aviso es secundario: si falla, Inicio se muestra igual.
@@ -192,11 +233,6 @@ export default function ExploreScreen() {
             profile?.avatarUrl ? `${profile.avatarUrl}?t=${encodeURIComponent(profile.updatedAt ?? '')}` : null
           );
           setAvatarLabel(profile?.displayName || email || '');
-
-          if (tracked) {
-            setWatching(tracked.filter((item) => item.status === 'watching'));
-            setRatings(Object.fromEntries(tracked.map((item) => [item.movie_id, item.rating])));
-          }
         }
 
         setLoading(false);
@@ -209,7 +245,13 @@ export default function ExploreScreen() {
     }, [userId, email])
   );
 
-  if (loading) {
+  const watching = userMovies.byStatus('watching');
+  const toWatch = userMovies.byStatus('watchlist');
+  const isNewUser = !userMovies.failed && userMovies.tracked.length === 0 && movies.length === 0;
+  const openMovie = (movieId: number) =>
+    router.push({ pathname: '/movie/[id]', params: { id: String(movieId) } });
+
+  if (loading || (userId != null && !userMovies.loaded)) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color="#B94DFF" size="large" />
@@ -240,36 +282,37 @@ export default function ExploreScreen() {
 
         <SearchBar onPress={() => router.push('/search')} />
 
+        {isNewUser ? (
+          <WelcomePanel onSearch={() => router.push('/search')} />
+        ) : (
+          <>
+            <TrackedSection
+              title="Continuar viendo"
+              items={watching}
+              ratings={userMovies.ratings}
+              emptyTitle="Tu próxima sesión empieza aquí"
+              emptyCopy="Marca una película como “Viendo” para encontrarla rápidamente."
+              onOpen={openMovie}
+            />
+            <TrackedSection
+              title="Para ver"
+              items={toWatch}
+              ratings={userMovies.ratings}
+              emptyTitle="Nada pendiente por ahora"
+              emptyCopy="Lo que marques como “Ver más tarde” queda aquí."
+              onOpen={openMovie}
+            />
+          </>
+        )}
+
         {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
 
         <QuickAccess onOpen={(href) => router.push(href)} />
 
-        <SectionTitle title="Continuar viendo" count={watching.length} />
-        {watching.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {watching.map(
-              (item) =>
-                item.movies && (
-                  <MovieCard
-                    key={item.movie_id}
-                    movie={item.movies}
-                    rating={item.rating}
-                    onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
-                  />
-                )
-            )}
-          </ScrollView>
-        ) : (
-          <View style={styles.emptyPanel}>
-            <Text style={styles.emptyTitle}>Tu próxima sesión empieza aquí</Text>
-            <Text style={styles.emptyCopy}>Marca una película como “viendo” para encontrarla rápidamente.</Text>
-          </View>
-        )}
-
         <ListsSection />
 
-        <SectionTitle title="Catálogo" count={movies.length} />
-        {movies.length > 0 ? (
+        {!isNewUser && <SectionTitle title="Catálogo" count={movies.length} />}
+        {isNewUser ? null : movies.length > 0 ? (
           // FlatList: el catálogo completo puede tener cientos de títulos y
           // solo se dibujan los que están cerca de la pantalla.
           <FlatList
@@ -279,9 +322,9 @@ export default function ExploreScreen() {
             renderItem={({ item: movie }) => (
               <MovieCard
                 movie={movie}
-                rating={ratings[movie.id] ?? null}
+                rating={userMovies.ratings[movie.id] ?? null}
                 compact
-                onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
+                onPress={() => openMovie(movie.id)}
               />
             )}
             initialNumToRender={6}
@@ -332,4 +375,8 @@ const styles = StyleSheet.create({
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 18, marginBottom: 24 },
   emptyTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '700' },
   emptyCopy: { color: '#8F8795', fontSize: 13, lineHeight: 19, marginTop: 6 },
+  welcome: { borderRadius: 18, padding: 20, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', marginBottom: 24 },
+  welcomeTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
+  welcomeButton: { alignSelf: 'flex-start', marginTop: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#A83BDD' },
+  welcomeButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });
