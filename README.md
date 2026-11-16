@@ -22,8 +22,10 @@ Para desplegarla (una vez, y de nuevo cuando cambie `supabase/functions/`):
 npx supabase login
 npx supabase link --project-ref <ref-del-proyecto>   # el ref es el subdominio de EXPO_PUBLIC_SUPABASE_URL
 npx supabase secrets set TMDB_KEY=<tu clave de la API de TheMovieDB>
-npx supabase functions deploy tmdb-proxy --no-verify-jwt
+npx supabase functions deploy tmdb-proxy --no-verify-jwt   # o: npm run deploy:tmdb-proxy
 ```
+
+Sin terminal: en el panel de Supabase, **Edge Functions > Deploy a new function > Via Editor**, con el nombre `tmdb-proxy`, pegando `handler.ts` seguido de `index.ts` (sin su linea `import ... from './handler.ts'`); en la funcion desactiva **Verify JWT** y en **Edge Functions > Secrets** agrega `TMDB_KEY`. No hay nada que ejecutar en el SQL Editor: el proxy no cambia tablas.
 
 `--no-verify-jwt` es a proposito: la funcion valida la sesion por su cuenta (con las claves `sb_publishable_` la verificacion automatica de Supabase no sirve). La logica esta en `handler.ts` y se prueba con Jest; `index.ts` solo la conecta con Deno. La CI falla si `src/` vuelve a llamar a `api.themoviedb.org`.
 
@@ -73,7 +75,7 @@ eas login
 eas init                       # la primera vez: crea el proyecto en Expo y agrega su id a app.json
 eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value <url> --visibility plaintext
 eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_KEY --value <clave publica> --visibility plaintext
-eas build --platform android --profile preview
+eas build --platform android --profile preview   # o: npm run build:apk
 ```
 
 EAS no lee `.env` (no esta en el repositorio): por eso las dos variables se cargan con `eas env:create`, una vez por entorno.
