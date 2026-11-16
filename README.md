@@ -6,11 +6,26 @@ Aplicacion Expo/React Native para seguir peliculas. La autenticacion usa Supabas
 
 1. Crea un proyecto en [Supabase](https://supabase.com/dashboard).
 2. Copia `.env.example` a `.env`.
-3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` desde el dialogo **Connect** del proyecto, y `EXPO_PUBLIC_TMDB_API_KEY` con tu clave de la API de [TheMovieDB](https://www.themoviedb.org/settings/api).
+3. En `.env`, completa `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_KEY` desde el dialogo **Connect** del proyecto. La clave de TheMovieDB ya no va en `.env`: va en los secretos de Supabase (ver abajo).
 4. Abre **SQL Editor** en Supabase y ejecuta `supabase/schema.sql`. El script se puede ejecutar mas de una vez: vuelve a correrlo cada vez que cambie, y hazlo antes de abrir la version nueva de la app. Mientras falten columnas, los cambios quedan pendientes en el telefono y algunas pantallas muestran un error.
 5. En **Authentication > URL Configuration**, configura la URL de la aplicacion para los enlaces de correo.
 
 La clave publica puede estar en la aplicacion. No uses nunca la clave `service_role` en Expo ni la subas al repositorio.
+
+### Edge Function `tmdb-proxy` (ADR-08)
+
+La app no llama a TheMovieDB ni lleva su clave: busca, sortea y abre fichas a traves de la Edge Function `supabase/functions/tmdb-proxy`, que exige una sesion iniciada, solo deja pasar las consultas que usa la app, agrega la clave y limita a 60 llamadas por minuto por usuario. Sin la funcion desplegada, la busqueda, la ruleta y las fichas de TheMovieDB muestran «No pudimos conectar con TheMovieDB».
+
+Para desplegarla (una vez, y de nuevo cuando cambie `supabase/functions/`):
+
+```bash
+npx supabase login
+npx supabase link --project-ref <ref-del-proyecto>   # el ref es el subdominio de EXPO_PUBLIC_SUPABASE_URL
+npx supabase secrets set TMDB_KEY=<tu clave de la API de TheMovieDB>
+npx supabase functions deploy tmdb-proxy --no-verify-jwt
+```
+
+`--no-verify-jwt` es a proposito: la funcion valida la sesion por su cuenta (con las claves `sb_publishable_` la verificacion automatica de Supabase no sirve). La logica esta en `handler.ts` y se prueba con Jest; `index.ts` solo la conecta con Deno. La CI falla si `src/` vuelve a llamar a `api.themoviedb.org`.
 
 ### Datos de prueba (opcional)
 
@@ -47,6 +62,32 @@ npm run lint
 La CI de GitHub ejecuta esos tres y ademas prueba la base: `supabase/tests/run.sh` corre `schema.sql` dos veces en un PostgreSQL vacio, la prueba de RLS entre dos usuarios (`rls.sql`, T-12) y el seed con sus numeros. Para correrla en tu equipo, apunta las variables de `psql` (`PGHOST`, `PGUSER`, `PGDATABASE`...) a una base local vacia, nunca a Supabase, y ejecuta `sh supabase/tests/run.sh`.
 
 `main` esta protegida: un pull request necesita la aprobacion de otra persona del equipo y la CI en verde para integrarse. La plantilla de pull request pide el issue, los criterios de aceptacion que cubre y la evidencia.
+
+## Generar el APK de Android
+
+`eas.json` tiene dos perfiles: `preview` genera un APK instalable para probar en telefonos y `production` un AAB para Play Store. Con [EAS Build](https://docs.expo.dev/build/introduction/) (en la nube, guarda la firma del equipo):
+
+```bash
+npm install -g eas-cli
+eas login
+eas init                       # la primera vez: crea el proyecto en Expo y agrega su id a app.json
+eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value <url> --visibility plaintext
+eas env:create --environment preview --name EXPO_PUBLIC_SUPABASE_KEY --value <clave publica> --visibility plaintext
+eas build --platform android --profile preview
+```
+
+EAS no lee `.env` (no esta en el repositorio): por eso las dos variables se cargan con `eas env:create`, una vez por entorno.
+
+Sin cuenta de Expo tambien se puede compilar en el equipo, con Android Studio (SDK) y un JDK 17:
+
+```bash
+npx expo prebuild --clean --platform android
+cd android && ./gradlew assembleRelease
+```
+
+El APK queda en `android/app/build/outputs/apk/release/app-release.apk` y toma las variables de `.env`. Esa compilacion local se firma con la clave de depuracion: sirve para instalar y probar, no para publicar en Play Store.
+
+Antes de repartir un APK: `schema.sql` al dia en Supabase y `tmdb-proxy` desplegada con `TMDB_KEY`.
 
 La pantalla de inicio de sesion ya usa `supabase.auth.signInWithPassword`, el registro usa `signUp` y la recuperacion usa `resetPasswordForEmail`.
 
