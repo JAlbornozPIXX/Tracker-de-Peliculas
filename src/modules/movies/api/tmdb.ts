@@ -1,8 +1,12 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+import { supabase } from '@/utils/supabase';
 import { withTimeout } from '@/utils/with-timeout';
 
-const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const TMDB_LANGUAGE = 'es-MX';
+// La app no llama a TheMovieDB ni guarda su clave: todo pasa por la Edge
+// Function tmdb-proxy con la sesión del usuario (ADR-08). El proxy agrega la
+// clave y el idioma es-MX.
+const TMDB_PROXY_FUNCTION = 'tmdb-proxy';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 const TMDB_POSTER_LARGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
@@ -98,25 +102,87 @@ type TmdbDiscoverResponse = {
 };
 
 /**
- * Error lanzado cuando falta configurar la API key de TheMovieDB.
+ * Qué salió mal al consultar TheMovieDB a través del proxy. «unavailable»
+ * (TheMovieDB caído o sin red) es distinto de una búsqueda sin resultados.
  */
-export class TmdbConfigError extends Error {
-  constructor(message: string) {
+export type TmdbErrorKind = 'unavailable' | 'session' | 'rate_limited' | 'invalid' | 'not_found' | 'misconfigured';
+
+const TMDB_ERROR_MESSAGES: Record<TmdbErrorKind, string> = {
+  unavailable: 'No pudimos conectar con TheMovieDB.',
+  session: 'Tu sesión venció. Vuelve a iniciar sesión.',
+  rate_limited: 'Hiciste muchas consultas seguidas. Intenta en un momento.',
+  invalid: 'La búsqueda no es válida.',
+  not_found: 'TheMovieDB no tiene ese título.',
+  misconfigured: 'El servidor no tiene configurada la conexión con TheMovieDB.',
+};
+
+export class TmdbError extends Error {
+  constructor(
+    readonly kind: TmdbErrorKind,
+    message = TMDB_ERROR_MESSAGES[kind]
+  ) {
     super(message);
-    this.name = 'TmdbConfigError';
-    Object.setPrototypeOf(this, TmdbConfigError.prototype);
+    this.name = 'TmdbError';
+    Object.setPrototypeOf(this, TmdbError.prototype);
+  }
+
+  // «Reintentar» solo sirve si el problema es pasajero.
+  get canRetry(): boolean {
+    return this.kind === 'unavailable' || this.kind === 'rate_limited';
   }
 }
 
-// GET a TheMovieDB con tiempo máximo. Un estado HTTP de error lanza su código.
-function tmdbGet<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
+const KIND_BY_STATUS: Record<number, TmdbErrorKind> = {
+  400: 'invalid',
+  401: 'session',
+  404: 'not_found',
+  429: 'rate_limited',
+  500: 'misconfigured',
+};
+
+// Sin red o con la función caída (FunctionsFetchError/RelayError) es «unavailable».
+function toTmdbError(error: unknown): TmdbError {
+  const status = error instanceof FunctionsHttpError ? (error.context as Response | undefined)?.status : undefined;
+  return new TmdbError((status != null && KIND_BY_STATUS[status]) || 'unavailable');
+}
+
+function isSessionError(err: unknown): err is TmdbError {
+  return err instanceof TmdbError && err.kind === 'session';
+}
+
+async function invokeProxy<T>(path: string, params: Record<string, string>, signal: AbortSignal): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>(TMDB_PROXY_FUNCTION, {
+    body: { path, params },
+    signal,
+  });
+  if (signal.aborted) {
+    throw Object.assign(new Error('La consulta se canceló.'), { name: 'AbortError' });
+  }
+  if (error) throw toTmdbError(error);
+  return data as T;
+}
+
+/**
+ * GET a TheMovieDB a través de tmdb-proxy, con tiempo máximo. Si la sesión
+ * venció se renueva una vez; si sigue sin valer se cierra la sesión local y
+ * la app vuelve al login (AC-39).
+ */
+function tmdbGet<T>(path: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
   return withTimeout(
     async (timedSignal) => {
-      const response = await fetch(`${TMDB_BASE_URL}${path}?${params.toString()}`, { signal: timedSignal });
-      if (!response.ok) {
-        throw new Error(`TheMovieDB respondió con un error (${response.status}).`);
+      try {
+        return await invokeProxy<T>(path, params, timedSignal);
+      } catch (err) {
+        if (!isSessionError(err)) throw err;
+        const { error } = await supabase.auth.refreshSession();
+        try {
+          if (error) throw err;
+          return await invokeProxy<T>(path, params, timedSignal);
+        } catch (retryErr) {
+          if (isSessionError(retryErr)) await supabase.auth.signOut({ scope: 'local' });
+          throw retryErr;
+        }
       }
-      return (await response.json()) as T;
     },
     { signal, timeoutMs: TMDB_TIMEOUT_MS }
   );
@@ -147,24 +213,13 @@ export async function searchMovies(
   genreIds: number[] = [],
   page = 1
 ): Promise<MoviePage> {
-  if (!TMDB_API_KEY) {
-    throw new TmdbConfigError(
-      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder buscar en TheMovieDB.'
-    );
-  }
 
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {
     return { results: [], totalPages: 0 };
   }
 
-  const params = new URLSearchParams({
-    api_key: TMDB_API_KEY,
-    query: trimmedQuery,
-    include_adult: 'false',
-    language: TMDB_LANGUAGE,
-    page: String(page),
-  });
+  const params = { query: trimmedQuery, include_adult: 'false', page: String(page) };
 
   const data = await tmdbGet<TmdbMultiSearchResponse>('/search/multi', params, signal);
 
@@ -186,14 +241,8 @@ export async function searchMovies(
  * Trae las categorías (géneros) de películas de TheMovieDB.
  */
 export async function getMovieGenres(signal?: AbortSignal): Promise<Genre[]> {
-  if (!TMDB_API_KEY) {
-    throw new TmdbConfigError(
-      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder consultar TheMovieDB.'
-    );
-  }
 
-  const params = new URLSearchParams({ api_key: TMDB_API_KEY, language: TMDB_LANGUAGE });
-  const data = await tmdbGet<{ genres: Genre[] }>('/genre/movie/list', params, signal);
+  const data = await tmdbGet<{ genres: Genre[] }>('/genre/movie/list', {}, signal);
   return data.genres;
 }
 
@@ -206,21 +255,14 @@ export async function discoverMoviesByGenres(
   signal?: AbortSignal,
   page = 1
 ): Promise<MoviePage> {
-  if (!TMDB_API_KEY) {
-    throw new TmdbConfigError(
-      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder buscar en TheMovieDB.'
-    );
-  }
 
-  const params = new URLSearchParams({
-    api_key: TMDB_API_KEY,
+  const params = {
     // Separadas por coma, TheMovieDB exige todas las categorías a la vez.
     with_genres: genreIds.join(','),
     sort_by: 'popularity.desc',
     include_adult: 'false',
-    language: TMDB_LANGUAGE,
     page: String(page),
-  });
+  };
 
   const data = await tmdbGet<TmdbMultiSearchResponse>('/discover/movie', params, signal);
 
@@ -244,29 +286,22 @@ export async function discoverMovies(
   page: number,
   signal?: AbortSignal
 ): Promise<DiscoverPage> {
-  if (!TMDB_API_KEY) {
-    throw new TmdbConfigError(
-      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder consultar TheMovieDB.'
-    );
-  }
 
-  const params = new URLSearchParams({
-    api_key: TMDB_API_KEY,
+  const params: Record<string, string> = {
     sort_by: 'popularity.desc',
     'vote_count.gte': String(DISCOVER_MIN_VOTES),
     include_adult: 'false',
     include_video: 'false',
-    language: TMDB_LANGUAGE,
     page: String(page),
-  });
+  };
   if (filters.genreIds.length > 0) {
     // Separadas por coma, TheMovieDB exige todas las categorías a la vez.
-    params.set('with_genres', filters.genreIds.join(','));
+    params.with_genres = filters.genreIds.join(',');
   }
   if (filters.maxDurationMinutes != null) {
     // Sin duración cargada TheMovieDB guarda 0: no cumple un tope de minutos.
-    params.set('with_runtime.gte', '1');
-    params.set('with_runtime.lte', String(filters.maxDurationMinutes));
+    params['with_runtime.gte'] = '1';
+    params['with_runtime.lte'] = String(filters.maxDurationMinutes);
   }
 
   const data = await tmdbGet<TmdbDiscoverResponse>('/discover/movie', params, signal);
@@ -289,14 +324,8 @@ export async function getMovieDetails(
   mediaType: MovieResultType,
   signal?: AbortSignal
 ): Promise<MovieDetails> {
-  if (!TMDB_API_KEY) {
-    throw new TmdbConfigError(
-      'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder consultar TheMovieDB.'
-    );
-  }
 
-  const params = new URLSearchParams({ api_key: TMDB_API_KEY, language: TMDB_LANGUAGE });
-  const data = await tmdbGet<TmdbDetailsResponse>(`/${mediaType}/${id}`, params, signal);
+  const data = await tmdbGet<TmdbDetailsResponse>(`/${mediaType}/${id}`, {}, signal);
   const isMovie = mediaType === 'movie';
   const releaseDate = (isMovie ? data.release_date : data.first_air_date) || null;
 

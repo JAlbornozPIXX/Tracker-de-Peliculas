@@ -2,12 +2,14 @@ import { Text, TextInput } from 'react-native';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
 import Search from '..';
-import { searchMovies, TmdbConfigError } from '@/modules/movies/api/tmdb';
+import { searchMovies, TmdbError } from '@/modules/movies/api/tmdb';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), dismissTo: jest.fn() }),
 }));
 jest.mock('react-native-safe-area-context', () => jest.requireActual('react-native-safe-area-context/jest/mock').default);
+// El cliente real de Supabase necesita la URL del .env; aquí no se usa.
+jest.mock('@/utils/supabase', () => ({ supabase: { functions: { invoke: jest.fn() }, auth: {} } }));
 jest.mock('@/modules/movies/api/tmdb', () => ({
   ...jest.requireActual('@/modules/movies/api/tmdb'),
   searchMovies: jest.fn(),
@@ -79,13 +81,22 @@ describe('Search (AC-10)', () => {
     expect(texts(renderer)).toContain('Matrix');
   });
 
-  it('si falta la clave de TheMovieDB lo avisa sin ofrecer «Reintentar»', async () => {
-    const message = 'Falta configurar EXPO_PUBLIC_TMDB_API_KEY para poder buscar en TheMovieDB.';
-    jest.mocked(searchMovies).mockRejectedValueOnce(new TmdbConfigError(message));
+  it('AC-36: con TheMovieDB caído avisa que no pudo conectar y ofrece «Reintentar», no «Sin resultados»', async () => {
+    jest.mocked(searchMovies).mockRejectedValueOnce(new TmdbError('unavailable'));
 
     const renderer = await renderAndSearch('matrix');
 
-    expect(texts(renderer)).toContain(message);
+    expect(texts(renderer)).toContain('No pudimos conectar con TheMovieDB.');
+    expect(button(renderer, 'Reintentar')).toBeDefined();
+    expect(texts(renderer).join(' ')).not.toMatch(/Sin resultados/);
+  });
+
+  it('si el servidor no tiene la clave de TheMovieDB lo avisa sin ofrecer «Reintentar»', async () => {
+    jest.mocked(searchMovies).mockRejectedValueOnce(new TmdbError('misconfigured'));
+
+    const renderer = await renderAndSearch('matrix');
+
+    expect(texts(renderer)).toContain('El servidor no tiene configurada la conexión con TheMovieDB.');
     expect(button(renderer, 'Reintentar')).toBeUndefined();
   });
 });
