@@ -7,6 +7,10 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
+// Igual que el splash nativo (app.json: expo-splash-screen), así el paso de
+// uno a otro no se nota.
+const SPLASH_IMAGE_SIZE = 200;
+const SPLASH_BACKGROUND = '#0B0B0F';
 
 export function AnimatedSplashOverlay() {
   const [animate, setAnimate] = useState(false);
@@ -33,7 +37,9 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  const image = (
+    <Image style={styles.splashImage} contentFit="contain" source={require('@/assets/images/splash-icon.png')} />
+  );
 
   return animate ? (
     <Animated.View
@@ -138,9 +144,13 @@ const styles = StyleSheet.create({
     height: 128,
     position: 'absolute',
   },
+  splashImage: {
+    width: SPLASH_IMAGE_SIZE,
+    height: SPLASH_IMAGE_SIZE,
+  },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#208AEF',
+    backgroundColor: SPLASH_BACKGROUND,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,

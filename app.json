@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "cine-teca",
+    "name": "CineTeca",
     "slug": "cine-teca",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "cineteca",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
@@ -14,14 +14,18 @@
       }
     },
     "android": {
+      "package": "com.jalbornozpixx.cineteca",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B0B0F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.cineteca"
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -32,15 +36,16 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#0B0B0F",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 200
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil."
+          "photosPermission": "Cine-teca necesita acceder a tus fotos para que elijas una imagen de perfil.",
+          "microphonePermission": false
         }
       ],
       "expo-sharing"
@@ -48,6 +53,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "backgroundColor": "#0B0B0F",
+    "extra": {
+      "eas": {
+        "projectId": "c7175ca7-22b9-4d02-bd08-edfeed77c821"
+      }
+    },
+    "owner": "jalbornoz.pixx"
   }
 }

@@ -14,6 +14,12 @@
       "jest"
     ]
   },
+  // index.ts de las Edge Functions corre en Deno (Deno.serve); su lógica
+  // (handler.ts) sí se revisa aquí y se prueba con Jest.
+  "exclude": [
+    "node_modules",
+    "supabase/functions/**/index.ts"
+  ],
   "include": [
     "**/*.ts",
     "**/*.tsx",

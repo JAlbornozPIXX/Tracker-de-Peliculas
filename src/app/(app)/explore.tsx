@@ -16,26 +16,19 @@ import { GoldenPoster } from '@/components/golden-poster';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { ListsSection } from '@/modules/lists/components/lists-section';
 import { getCatalogMovies } from '@/modules/movies/api/movies';
+import type { TrackedMovie } from '@/modules/movies/api/user-movies';
+import { useUserMovies } from '@/modules/movies/hooks/use-user-movies';
 import { getProfile } from '@/modules/profile/api/profile';
 import { ProfileAvatar } from '@/modules/profile/components/profile-avatar';
 import { getShamePile } from '@/modules/watchlist/api/shame';
 import { SHAME_MIN_DAYS } from '@/modules/watchlist/utils/shame';
 import { errorMessage, showAlert } from '@/utils/alert';
-import { fetchAllRows } from '@/utils/fetch-all';
-import { supabase } from '@/utils/supabase';
 
 type Movie = {
   id: number;
   title: string;
   overview: string | null;
   poster_url: string | null;
-};
-
-type TrackedMovie = {
-  movie_id: number;
-  status: 'watchlist' | 'watching' | 'watched';
-  rating: number | null;
-  movies: Movie | null;
 };
 
 const CARD_WIDTH = 142;
@@ -77,10 +70,11 @@ function SearchBar({ onPress }: { onPress: () => void }) {
   );
 }
 
-// Zonas que no están en la barra inferior: se abren desde aquí en un toque.
+// Zonas que no están en la barra inferior: van justo bajo la búsqueda para que
+// se vean al abrir la app, sin tener que bajar.
 const QUICK_ACCESS = [
-  { href: '/random', icon: '◎', label: 'Azar' },
-  { href: '/shame', icon: '⏳', label: 'Pila' },
+  { href: '/random', icon: '◎', label: 'Ruleta' },
+  { href: '/shame', icon: '⏳', label: 'Vergüenza' },
   { href: '/ranking', icon: '★', label: 'Ranking' },
   { href: '/stats', icon: '▤', label: 'Estadísticas' },
   { href: '/challenges', icon: '⚑', label: 'Retos' },
@@ -126,11 +120,99 @@ function ShameBanner({ count, onPress }: { count: number; onPress: () => void })
   );
 }
 
+// Decidir rápido (N-03): con pendientes, la Ruleta se ofrece justo después.
+function RouletteCard({ pending, onPress }: { pending: number; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Abrir la Ruleta para elegir qué ver"
+      onPress={onPress}
+      style={({ pressed }) => [styles.rouletteCard, pressed && styles.rouletteCardPressed]}>
+      <View style={styles.rouletteIconWrap}>
+        <Text style={styles.rouletteIcon}>◎</Text>
+      </View>
+      <View style={styles.rouletteText}>
+        <Text style={styles.rouletteTitle}>¿No sabes qué ver?</Text>
+        <Text style={styles.rouletteCopy}>
+          {pending > 0
+            ? `Tienes ${pending === 1 ? '1 título' : `${pending} títulos`} para ver. Gira la Ruleta y decide en segundos.`
+            : 'Gira la Ruleta y deja que el azar elija por ti.'}
+        </Text>
+      </View>
+      <Text style={styles.rouletteArrow}>›</Text>
+    </Pressable>
+  );
+}
+
+// Primer nombre para el saludo: el nombre del perfil o, si no hay, el correo.
+function firstName(label: string): string {
+  const base = label.includes('@') ? label.split('@')[0] : label;
+  const first = base.trim().split(/[\s._-]+/)[0] ?? '';
+  return first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
+}
+
+// Usuario nuevo, sin títulos: en vez de secciones vacías, un solo llamado a buscar (AC-38).
+function WelcomePanel({ onSearch }: { onSearch: () => void }) {
+  return (
+    <View style={styles.welcome}>
+      <Text style={styles.welcomeTitle}>Busca tu primera película</Text>
+      <Text style={styles.emptyCopy}>
+        Encuéntrala en TheMovieDB, márcala como Viendo o Ver más tarde y aparecerá aquí.
+      </Text>
+      <Pressable accessibilityRole="button" onPress={onSearch} style={styles.welcomeButton}>
+        <Text style={styles.welcomeButtonText}>Buscar películas</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function SectionTitle({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionTitleRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {count !== undefined && <Text style={styles.sectionCount}>{count} títulos</Text>}
+    </View>
+  );
+}
+
+function TrackedSection({
+  title,
+  items,
+  ratings,
+  emptyTitle,
+  emptyCopy,
+  onOpen,
+}: {
+  title: string;
+  items: TrackedMovie[];
+  ratings: Record<number, number | null>;
+  emptyTitle: string;
+  emptyCopy: string;
+  onOpen: (movieId: number) => void;
+}) {
+  return (
+    <View accessibilityLabel={`${title}, ${items.length === 1 ? '1 título' : `${items.length} títulos`}`}>
+      <SectionTitle title={title} count={items.length} />
+      {items.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {items.map(
+            (item) =>
+              item.movie && (
+                <MovieCard
+                  key={item.movieId}
+                  movie={item.movie}
+                  rating={ratings[item.movieId] ?? null}
+                  onPress={() => onOpen(item.movieId)}
+                />
+              )
+          )}
+        </ScrollView>
+      ) : (
+        <View style={styles.emptyPanel}>
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.emptyCopy}>{emptyCopy}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -143,9 +225,8 @@ export default function ExploreScreen() {
   const userId = session?.user.id;
   const email = session?.user.email;
   const [movies, setMovies] = useState<Movie[]>([]);
-  const [watching, setWatching] = useState<TrackedMovie[]>([]);
-  // Nota del usuario por movie_id, para el marco dorado del catálogo.
-  const [ratings, setRatings] = useState<Record<number, number | null>>({});
+  // Las secciones por estado salen del mismo seguimiento, con RLS (L1).
+  const userMovies = useUserMovies(userId);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarLabel, setAvatarLabel] = useState('');
   const [shameCount, setShameCount] = useState(0);
@@ -160,21 +241,13 @@ export default function ExploreScreen() {
       async function loadHome() {
         if (userId) {
           let catalogError: unknown = null;
-          const [catalog, tracked, profile, shame] = await Promise.all([
+          const [catalog, profile, shame] = await Promise.all([
             // El catálogo propio (RN-03): la tabla movies tiene también las
             // películas de otros usuarios.
             getCatalogMovies(userId).catch((err: unknown) => {
               catalogError = err;
               return null;
             }),
-            fetchAllRows<TrackedMovie>((from, to) =>
-              supabase
-                .from('user_movies')
-                .select('movie_id, status, rating, movies(id, title, overview, poster_url)', { count: 'exact' })
-                .eq('user_id', userId)
-                .order('movie_id')
-                .range(from, to)
-            ).catch(() => null),
             // Sin perfil se muestra la inicial del correo.
             getProfile(userId).catch(() => null),
             // El aviso es secundario: si falla, Inicio se muestra igual.
@@ -192,11 +265,6 @@ export default function ExploreScreen() {
             profile?.avatarUrl ? `${profile.avatarUrl}?t=${encodeURIComponent(profile.updatedAt ?? '')}` : null
           );
           setAvatarLabel(profile?.displayName || email || '');
-
-          if (tracked) {
-            setWatching(tracked.filter((item) => item.status === 'watching'));
-            setRatings(Object.fromEntries(tracked.map((item) => [item.movie_id, item.rating])));
-          }
         }
 
         setLoading(false);
@@ -209,7 +277,14 @@ export default function ExploreScreen() {
     }, [userId, email])
   );
 
-  if (loading) {
+  const watching = userMovies.byStatus('watching');
+  const toWatch = userMovies.byStatus('watchlist');
+  const name = firstName(avatarLabel);
+  const isNewUser = !userMovies.failed && userMovies.tracked.length === 0 && movies.length === 0;
+  const openMovie = (movieId: number) =>
+    router.push({ pathname: '/movie/[id]', params: { id: String(movieId) } });
+
+  if (loading || (userId != null && !userMovies.loaded)) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color="#B94DFF" size="large" />
@@ -227,7 +302,8 @@ export default function ExploreScreen() {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.eyebrow}>CINE-TECA</Text>
-            <Text style={styles.greeting}>Tu espacio de cine</Text>
+            <Text style={styles.greeting}>{name ? `Hola, ${name}` : 'Tu espacio de cine'}</Text>
+            <Text style={styles.subGreeting}>¿Qué vemos hoy?</Text>
           </View>
           <ProfileAvatar
             avatarUrl={avatarUrl}
@@ -240,36 +316,38 @@ export default function ExploreScreen() {
 
         <SearchBar onPress={() => router.push('/search')} />
 
-        {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
-
         <QuickAccess onOpen={(href) => router.push(href)} />
 
-        <SectionTitle title="Continuar viendo" count={watching.length} />
-        {watching.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {watching.map(
-              (item) =>
-                item.movies && (
-                  <MovieCard
-                    key={item.movie_id}
-                    movie={item.movies}
-                    rating={item.rating}
-                    onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(item.movie_id) } })}
-                  />
-                )
-            )}
-          </ScrollView>
+        {shameCount > 0 && <ShameBanner count={shameCount} onPress={() => router.push('/shame')} />}
+
+        {isNewUser ? (
+          <WelcomePanel onSearch={() => router.push('/search')} />
         ) : (
-          <View style={styles.emptyPanel}>
-            <Text style={styles.emptyTitle}>Tu próxima sesión empieza aquí</Text>
-            <Text style={styles.emptyCopy}>Marca una película como “viendo” para encontrarla rápidamente.</Text>
-          </View>
+          <>
+            <TrackedSection
+              title="Continuar viendo"
+              items={watching}
+              ratings={userMovies.ratings}
+              emptyTitle="Tu próxima sesión empieza aquí"
+              emptyCopy="Marca una película como “Viendo” para encontrarla rápidamente."
+              onOpen={openMovie}
+            />
+            <TrackedSection
+              title="Para ver"
+              items={toWatch}
+              ratings={userMovies.ratings}
+              emptyTitle="Nada pendiente por ahora"
+              emptyCopy="Lo que marques como “Ver más tarde” queda aquí."
+              onOpen={openMovie}
+            />
+            <RouletteCard pending={toWatch.length} onPress={() => router.push('/random')} />
+          </>
         )}
 
         <ListsSection />
 
-        <SectionTitle title="Catálogo" count={movies.length} />
-        {movies.length > 0 ? (
+        {!isNewUser && <SectionTitle title="Catálogo" count={movies.length} />}
+        {isNewUser ? null : movies.length > 0 ? (
           // FlatList: el catálogo completo puede tener cientos de títulos y
           // solo se dibujan los que están cerca de la pantalla.
           <FlatList
@@ -279,9 +357,9 @@ export default function ExploreScreen() {
             renderItem={({ item: movie }) => (
               <MovieCard
                 movie={movie}
-                rating={ratings[movie.id] ?? null}
+                rating={userMovies.ratings[movie.id] ?? null}
                 compact
-                onPress={() => router.push({ pathname: '/movie/[id]', params: { id: String(movie.id) } })}
+                onPress={() => openMovie(movie.id)}
               />
             )}
             initialNumToRender={6}
@@ -309,12 +387,13 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
   eyebrow: { color: '#B94DFF', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   greeting: { color: '#F4F4F5', fontSize: 23, fontWeight: '700', marginTop: 4 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 22 },
-  quickTile: { flexBasis: '30%', flexGrow: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 16, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
+  subGreeting: { color: '#8F8795', fontSize: 13, marginTop: 2 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 22 },
+  quickTile: { flexBasis: '30%', flexGrow: 1, alignItems: 'center', gap: 4, paddingVertical: 10, borderRadius: 14, backgroundColor: '#17151D', borderWidth: 1, borderColor: '#292431' },
   quickTilePressed: { backgroundColor: '#211D28' },
-  quickIcon: { color: '#D78CFF', fontSize: 20, lineHeight: 22 },
+  quickIcon: { color: '#D78CFF', fontSize: 18, lineHeight: 20 },
   quickLabel: { color: '#D5D0D8', fontSize: 12, fontWeight: '700' },
-  shameBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#2A2112', borderWidth: 1, borderColor: '#5C4520', marginTop: -8, marginBottom: 22 },
+  shameBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#2A2112', borderWidth: 1, borderColor: '#5C4520', marginBottom: 22 },
   shameIcon: { fontSize: 22 },
   shameText: { flex: 1 },
   shameTitle: { color: '#F4F4F5', fontSize: 14, fontWeight: '800' },
@@ -332,4 +411,16 @@ const styles = StyleSheet.create({
   emptyPanel: { backgroundColor: '#15131A', borderRadius: 15, borderWidth: 1, borderColor: '#27222D', padding: 18, marginBottom: 24 },
   emptyTitle: { color: '#F4F4F5', fontSize: 15, fontWeight: '700' },
   emptyCopy: { color: '#8F8795', fontSize: 13, lineHeight: 19, marginTop: 6 },
+  welcome: { borderRadius: 18, padding: 20, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', marginBottom: 24 },
+  welcomeTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
+  welcomeButton: { alignSelf: 'flex-start', marginTop: 16, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#A83BDD' },
+  welcomeButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  rouletteCard: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, backgroundColor: '#24102D', borderWidth: 1, borderColor: '#4D1E61', marginTop: -6, marginBottom: 26 },
+  rouletteCardPressed: { backgroundColor: '#2D1438' },
+  rouletteIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#A83BDD', alignItems: 'center', justifyContent: 'center' },
+  rouletteIcon: { color: '#FFFFFF', fontSize: 22, lineHeight: 24 },
+  rouletteText: { flex: 1 },
+  rouletteTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  rouletteCopy: { color: '#C9B6D3', fontSize: 12, lineHeight: 17, marginTop: 3 },
+  rouletteArrow: { color: '#D78CFF', fontSize: 26, lineHeight: 26 },
 });

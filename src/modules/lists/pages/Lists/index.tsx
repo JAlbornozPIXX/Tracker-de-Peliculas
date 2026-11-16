@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -73,7 +73,9 @@ export default function Lists() {
   const [genre, setGenre] = useState<string | null>(null);
   // Resultado del último género consultado; si no coincide con genre, está cargando.
   const [genreResult, setGenreResult] = useState<{ genre: string; movies: MovieCardData[] } | null>(null);
-  const [creating, setCreating] = useState(false);
+  // Desde Inicio, «Nueva lista» abre Mis listas con el diálogo ya abierto.
+  const { nueva } = useLocalSearchParams<{ nueva?: string }>();
+  const [creating, setCreating] = useState(nueva === '1');
   // Sube con cada foco para que la grilla de un género también se recargue.
   const [reloadKey, setReloadKey] = useState(0);
 

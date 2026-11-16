@@ -20,7 +20,7 @@ import { MovieResultCard } from '@/modules/movies/components/movie-result-card';
 import {
   Genre,
   MovieResult,
-  TmdbConfigError,
+  TmdbError,
   discoverMoviesByGenres,
   getMovieGenres,
   searchMovies,
@@ -36,7 +36,7 @@ export default function Search() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(false);
-  // canRetry: «Reintentar» no sirve si lo que falta es la clave de TheMovieDB.
+  // canRetry: «Reintentar» no sirve si el problema no es pasajero (p. ej. sesión vencida).
   const [error, setError] = useState<{ message: string; canRetry: boolean } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [genres, setGenres] = useState<Genre[]>([]);
@@ -113,9 +113,10 @@ export default function Search() {
           return;
         }
         setResults([]);
+        // TheMovieDB caído no es lo mismo que «Sin resultados» (AC-36).
         setError(
-          err instanceof TmdbConfigError
-            ? { message: err.message, canRetry: false }
+          err instanceof TmdbError
+            ? { message: err.message, canRetry: err.canRetry }
             : { message: 'No se pudo completar la búsqueda. Intenta nuevamente.', canRetry: true }
         );
       })

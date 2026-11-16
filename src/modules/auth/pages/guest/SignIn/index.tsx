@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/modules/auth/components/auth-button';
 import { AuthTextField } from '@/modules/auth/components/auth-text-field';
+import { CollageTitle } from '@/modules/auth/components/collage-title';
+import { GridPaper } from '@/modules/auth/components/grid-paper';
 import { validateEmail, validatePassword } from '@/modules/auth/utils/validators';
 import { Colors, FontSize, Spacing } from '@/theme';
 import { showAlert } from '@/utils/alert';
@@ -54,15 +56,18 @@ export default function SignIn() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <GridPaper />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled">
+          <CollageTitle tagline="tu cartelera personal" />
+
           <View style={styles.header}>
             <Text style={styles.title}>Iniciar sesión</Text>
-            <Text style={styles.subtitle}>Bienvenido de nuevo a Cine Teca</Text>
+            <Text style={styles.subtitle}>Bienvenido de nuevo</Text>
           </View>
 
           <View style={styles.form}>
@@ -121,7 +126,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: Spacing.lg,
-    gap: Spacing.xl,
+    paddingTop: Spacing.lg,
+    gap: Spacing.lg,
   },
   header: {
     gap: Spacing.xs,

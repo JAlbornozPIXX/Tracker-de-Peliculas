@@ -26,6 +26,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # ADR-08: la app no llama a TheMovieDB ni lleva su clave; todo pasa por
+      # la Edge Function tmdb-proxy. Falla si alguien la vuelve a meter en src/.
+      - name: Sin llamadas directas a TheMovieDB
+        run: |
+          if grep -rnE "api\.themoviedb\.org|TMDB_API_KEY" src/; then
+            echo "src/ no debe llamar a TheMovieDB ni leer su clave: usa tmdb-proxy." >&2
+            exit 1
+          fi
+
       - name: Pruebas unitarias
         run: npx jest --ci
 

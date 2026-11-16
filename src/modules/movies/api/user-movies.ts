@@ -132,3 +132,41 @@ export async function getWatchedMovieIds(userId: string, movieIds?: number[]): P
     : await fetchAllRows<{ movie_id: number }>((from, to) => watched(true).order('movie_id').range(from, to));
   return new Set(rows.map((row) => row.movie_id));
 }
+
+export type TrackedMovie = {
+  movieId: number;
+  status: StatusKey;
+  rating: number | null;
+  // Cuándo se puso el estado actual: ordena las secciones de Inicio.
+  statusChangedAt: string | null;
+  movie: { id: number; title: string; overview: string | null; poster_url: string | null } | null;
+};
+
+type TrackedMovieRow = {
+  movie_id: number;
+  status: StatusKey;
+  rating: number | null;
+  status_changed_at: string | null;
+  movies: TrackedMovie['movie'];
+};
+
+// Todo el seguimiento del usuario con su película, para las secciones de Inicio.
+export async function getTrackedMovies(userId: string): Promise<TrackedMovie[]> {
+  const rows = await fetchAllRows<TrackedMovieRow>((from, to) =>
+    supabase
+      .from('user_movies')
+      .select('movie_id, status, rating, status_changed_at, movies(id, title, overview, poster_url)', {
+        count: 'exact',
+      })
+      .eq('user_id', userId)
+      .order('movie_id')
+      .range(from, to)
+  );
+  return rows.map((row) => ({
+    movieId: row.movie_id,
+    status: row.status,
+    rating: row.rating,
+    statusChangedAt: row.status_changed_at,
+    movie: row.movies,
+  }));
+}
